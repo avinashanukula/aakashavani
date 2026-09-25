@@ -4,7 +4,6 @@ import { VeironLogo } from '../components/logos/VeironLogo';
 import { AakashavaniLogo } from '../components/logos/AakashavaniLogo';
 import { HorizonBanner } from '../components/HorizonBanner';
 import { ModelEvaluationHub } from '../components/ModelEvaluationHub';
-import { ArchitectureGraph } from '../components/ArchitectureGraph';
 import { 
   ArrowRight, 
   ArrowUpRight, 
@@ -52,10 +51,10 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                 </button>
 
                 <button
-                  onClick={() => onNavigate('architecture')}
+                  onClick={() => onNavigate('approach')}
                   className="px-5 py-3 text-sm text-[#474540] hover:text-[#141413] font-medium transition-colors flex items-center gap-1 cursor-pointer"
                 >
-                  <span>9-Layer Architecture</span>
+                  <span>Our Approach</span>
                   <ArrowUpRight size={14} />
                 </button>
               </div>
@@ -145,17 +144,17 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Card 2: 9-Layer Architecture */}
+            {/* Card 2: The World-Model Approach */}
             <div className="p-8 flex flex-col justify-between space-y-6 hover:bg-[#FAF8F5] transition-colors">
               <div className="space-y-4">
                 <div className="text-[11px] font-mono text-[#E5182B] uppercase tracking-wider">
-                  TECHNICAL SPECIFICATION
+                  RESEARCH METHODOLOGY
                 </div>
                 <h3 className="text-xl sm:text-2xl font-serif text-[#141413] leading-snug">
-                  9-Layer Recursive Architecture
+                  The World-Model Approach
                 </h3>
                 <p className="text-sm text-[#66645E] leading-relaxed">
-                  Our formal technical specification detailing the pipeline from World State to Belief State, Dynamic Orchestration, Specialist Reasoning, Adversarial Review, and Axiomatic Verification.
+                  Moving beyond static prompt-response paradigms into continuous Bayesian updating, recursive belief alignment, and institutional risk verification under market uncertainty.
                 </p>
               </div>
 
@@ -166,15 +165,15 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                 </div>
                 <div className="flex justify-between text-[#87857F]">
                   <span>CATEGORY</span>
-                  <span className="text-[#141413]">Technical Specs</span>
+                  <span className="text-[#141413]">Methodology</span>
                 </div>
                 <div className="flex justify-between text-[#87857F] items-center pt-2">
                   <span>DETAILS</span>
                   <button
-                    onClick={() => onNavigate('architecture')}
+                    onClick={() => onNavigate('approach')}
                     className="px-3 py-1 bg-[#141413] text-[#FAF8F5] rounded-full text-[11px] font-sans hover:bg-[#2B2A28] transition-colors cursor-pointer flex items-center gap-1"
                   >
-                    <span>Architecture</span>
+                    <span>Approach</span>
                     <ArrowUpRight size={11} />
                   </button>
                 </div>
@@ -276,28 +275,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
         </div>
       </section>
 
-      {/* 6. INTERACTIVE WORLD-MODEL ARCHITECTURE (9 LAYERS) */}
-      <section className="py-20 sm:py-28 border-b border-[#E3E0D8] bg-[#F7F5F0]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-3xl space-y-4 mb-12">
-            <div className="font-mono text-xs uppercase tracking-widest text-[#E5182B]">
-              SYSTEM ANATOMY
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-serif text-[#141413] tracking-tight">
-              Interactive World-Model Architecture
-            </h2>
-            <p className="text-sm sm:text-base text-[#66645E]">
-              From continuous World State estimation through dynamic specialist orchestration and adversarial review, culminating in an updated world model state.
-            </p>
-          </div>
-
-          <div className="border border-[#E3E0D8] bg-white p-6 sm:p-8">
-            <ArchitectureGraph />
-          </div>
-        </div>
-      </section>
-
-      {/* 7. WHY IT MATTERS: INTERCONNECTED REFLEXIVE MARKETS */}
+      {/* 6. WHY IT MATTERS: INTERCONNECTED REFLEXIVE MARKETS */}
       <section className="py-20 sm:py-28 border-b border-[#E3E0D8] bg-[#FAF8F5]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">

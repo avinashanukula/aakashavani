@@ -2,28 +2,9 @@ export type Page =
   | 'home' 
   | 'aakashavani' 
   | 'approach' 
-  | 'architecture' 
   | 'applications' 
   | 'about' 
   | 'contact';
-
-export interface ArchitectureNodeData {
-  id: string;
-  number: string;
-  name: string;
-  layer: string;
-  shortDesc: string;
-  detailedDesc: string;
-  inputs: string[];
-  outputs: string[];
-  metrics: {
-    latency: string;
-    certaintyType: string;
-    invalidationTrigger: string;
-  };
-  asciiDiagram?: string;
-  codeSnippet?: string;
-}
 
 export interface SimulationScenario {
   id: string;

@@ -58,9 +58,8 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                   Direct correspondence with the engineering and research team:
                 </div>
               </div>
-              <div className="flex items-center gap-2 font-mono text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 border border-emerald-200">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                <span>MONITORED ENCRYPTED INBOX</span>
+              <div className="font-mono text-xs text-[#87857F]">
+                <span>ENCRYPTED INBOX</span>
               </div>
             </div>
 

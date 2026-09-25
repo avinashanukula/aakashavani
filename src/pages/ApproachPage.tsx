@@ -157,16 +157,16 @@ export const ApproachPage: React.FC<ApproachPageProps> = ({ onNavigate }) => {
       <section className="py-20 bg-[#F7F5F0]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
           <h2 className="text-3xl font-serif text-[#141413]">
-            Inspect the Technical Architecture
+            Experience Aakashavani in Real Time
           </h2>
           <p className="text-sm text-[#66645E] max-w-xl mx-auto">
-            Review the 9 formal layers and mathematical formulation powering the world-model approach.
+            Observe how Veiron's financial world model ingests market shocks, tests competing hypotheses, and resolves epistemic uncertainty.
           </p>
           <button
-            onClick={() => onNavigate('architecture')}
+            onClick={() => onNavigate('aakashavani')}
             className="px-6 py-3 bg-[#141413] hover:bg-[#2B2A28] text-white text-xs font-mono uppercase tracking-wider rounded-full transition-colors cursor-pointer"
           >
-            Explore 9-Layer Architecture →
+            Explore Aakashavani →
           </button>
         </div>
       </section>

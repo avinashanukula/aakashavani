@@ -2,5 +2,7 @@
   "name": "VEIRON — World Models for Institutions",
   "description": "Veiron builds AI-native world models that understand complex, continuously changing environments and help institutions reason, simulate, and make decisions under uncertainty.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

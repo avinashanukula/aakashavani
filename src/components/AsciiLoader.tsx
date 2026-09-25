@@ -127,7 +127,7 @@ export const AsciiLoader: React.FC<AsciiLoaderProps> = ({
 
           <div className="text-[10px] text-[#87857F] pt-2 border-t border-[#F0EEE6] flex items-center justify-between">
             <span>BAYESIAN EVIDENCE CONVERGENCE</span>
-            <span className="text-[#141413] font-bold">{pulseBlock} ACTIVE</span>
+            <span className="text-[#141413]">{pulseBlock}</span>
           </div>
         </div>
       </div>
@@ -152,7 +152,7 @@ export const AsciiLoader: React.FC<AsciiLoaderProps> = ({
 
       <div className="text-[10px] text-[#87857F] flex items-center justify-between pt-1">
         <span>MANIFOLD RECOMPUTATION</span>
-        <span className="text-emerald-700">OK</span>
+        <span className="text-[#87857F]">CYCLE IN PROGRESS</span>
       </div>
     </div>
   );

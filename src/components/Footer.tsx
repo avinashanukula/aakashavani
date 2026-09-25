@@ -105,7 +105,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               </li>
               <li>
                 <button
-                  onClick={() => onNavigate('architecture')}
+                  onClick={() => onNavigate('aakashavani')}
                   className="hover:text-white transition-colors cursor-pointer text-left"
                 >
                   Adversarial Red Teaming
@@ -122,7 +122,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             </ul>
           </div>
 
-          {/* Column 3: Architecture & Verticals */}
+          {/* Column 3: Applications & Verticals */}
           <div className="space-y-3 text-xs">
             <div className="text-[#FAF8F5] font-semibold tracking-wide text-xs">
               Institutions

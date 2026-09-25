@@ -4,10 +4,8 @@ import {
   Globe, 
   Activity, 
   Compass, 
-  Layers, 
   Boxes, 
   BookOpen, 
-  Mail, 
   ArrowUpRight 
 } from 'lucide-react';
 
@@ -17,11 +15,10 @@ interface DockNavProps {
 }
 
 export const DockNav: React.FC<DockNavProps> = ({ currentPage, onNavigate }) => {
-  const items: { id: Page; label: string; icon: React.ElementType; badge?: string }[] = [
+  const items: { id: Page; label: string; icon: React.ElementType }[] = [
     { id: 'home', label: 'Overview', icon: Globe },
-    { id: 'aakashavani', label: 'Aakashavani', icon: Activity, badge: '0.1' },
+    { id: 'aakashavani', label: 'Aakashavani', icon: Activity },
     { id: 'approach', label: 'Approach', icon: Compass },
-    { id: 'architecture', label: 'Architecture', icon: Layers },
     { id: 'applications', label: 'Applications', icon: Boxes },
     { id: 'about', label: 'About', icon: BookOpen },
   ];
@@ -52,15 +49,9 @@ export const DockNav: React.FC<DockNavProps> = ({ currentPage, onNavigate }) => 
                 <Icon size={14} className={`shrink-0 transition-transform duration-200 group-hover:scale-110 ${isActive ? 'text-[#E5182B]' : 'text-[#87857F] group-hover:text-white'}`} />
                 <span className="text-[11px] sm:text-xs tracking-tight">{item.label}</span>
 
-                {item.badge && (
-                  <span className="hidden md:inline-block font-mono text-[9px] px-1 py-0.2 bg-[#E5182B]/20 text-[#FF4D5E] border border-[#E5182B]/30 rounded-full">
-                    {item.badge}
-                  </span>
-                )}
-
                 {/* Active Indicator Pip */}
                 {isActive && (
-                  <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1 bg-[#E5182B] rounded-full shadow-[0_0_6px_#E5182B]" />
+                  <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1 bg-[#E5182B] rounded-full" />
                 )}
               </button>
             );
@@ -73,19 +64,13 @@ export const DockNav: React.FC<DockNavProps> = ({ currentPage, onNavigate }) => 
         {/* HIGHLIGHTED CONTACT US BUTTON */}
         <button
           onClick={() => onNavigate('contact')}
-          className={`shrink-0 relative group flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs font-semibold tracking-wide transition-all duration-200 cursor-pointer whitespace-nowrap shadow-lg ${
+          className={`shrink-0 relative group flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs font-semibold tracking-wide transition-all duration-200 cursor-pointer whitespace-nowrap shadow-lg ${
             currentPage === 'contact'
               ? 'bg-[#E5182B] text-white ring-2 ring-white/40 shadow-[0_0_20px_rgba(229,24,43,0.6)] scale-105'
               : 'bg-[#E5182B] text-white hover:bg-[#FF2A3D] hover:scale-105 active:scale-95 shadow-[0_4px_16px_rgba(229,24,43,0.35)]'
           }`}
           title="Contact Us / Institutional Briefing"
         >
-          {/* Pulsing Signal Dot */}
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-80" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
-          </span>
-
           <span className="font-sans font-bold text-[11px] sm:text-xs text-white">Contact Us</span>
           <ArrowUpRight size={13} className="shrink-0 text-white/90 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
         </button>

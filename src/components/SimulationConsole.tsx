@@ -166,13 +166,8 @@ export const SimulationConsole: React.FC = () => {
         <div className="flex items-center gap-3">
           <AakashavaniLogo size={24} showWordmark={false} color="#e5182b" />
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-bold text-white tracking-wider">
-                AAKASHAVANI WORLD MODEL CONSOLE
-              </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 bg-[#e5182b]/15 text-[#ff4d5e] border border-[#e5182b]/30">
-                AKHVNI-0.1.2
-              </span>
+            <div className="font-mono text-xs font-bold text-white tracking-wider">
+              AAKASHAVANI WORLD MODEL CONSOLE
             </div>
             <div className="text-[10px] font-mono text-neutral-400">
               ENVIRONMENT: CONTINUOUS FINANCIAL INTELLIGENCE SIMULATOR
@@ -190,10 +185,6 @@ export const SimulationConsole: React.FC = () => {
             <RefreshCw size={11} className={isComputing ? 'animate-spin text-[#e5182b]' : ''} />
             <span>RE-RUN TEST</span>
           </button>
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="text-neutral-300">LIVE COGNITIVE LOOP</span>
-          </div>
         </div>
       </div>
 

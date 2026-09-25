@@ -1,14 +1,22 @@
 import React from 'react';
 import { VeironLogo } from './logos/VeironLogo';
 import { Page } from '../types';
-import { ArrowUpRight, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
+import { AsciiLoader } from './AsciiLoader';
 
 interface NavbarProps {
   currentPage: Page;
   onNavigate: (page: Page) => void;
+  isTransitioning?: boolean;
+  transitionLabel?: string;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
+export const Navbar: React.FC<NavbarProps> = ({ 
+  currentPage, 
+  onNavigate,
+  isTransitioning = false,
+  transitionLabel = 'RESOLVING RECURSIVE STATE...'
+}) => {
   return (
     <header className="sticky top-0 z-40 w-full bg-[#FAF8F5]/90 backdrop-blur-md border-b border-[#E3E0D8] transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -26,13 +34,15 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
             </span>
           </div>
 
-          {/* Center: Live Institutional Telemetry State */}
-          <div className="hidden md:flex items-center gap-2.5 font-mono text-[11px] text-[#66645E] bg-[#F0EEE6] px-3 py-1 rounded-full border border-[#E3E0D8]">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#E5182B] opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#E5182B]" />
-            </span>
-            <span className="text-[#141413] font-medium">AKHVNI-0.1.2 :: CONTINUOUS ONLINE</span>
+          {/* Center: Dynamic ASCII Loading Animation during transitions (clean when idle) */}
+          <div className="hidden md:flex items-center justify-center min-w-[280px]">
+            {isTransitioning && (
+              <AsciiLoader
+                variant="inline"
+                label={transitionLabel}
+                durationMs={450}
+              />
+            )}
           </div>
 
           {/* Right Action: Highlighted Contact Us & Briefing CTA */}

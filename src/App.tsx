@@ -7,7 +7,6 @@ import { AsciiLoader } from './components/AsciiLoader';
 import { HomePage } from './pages/HomePage';
 import { AakashavaniPage } from './pages/AakashavaniPage';
 import { ApproachPage } from './pages/ApproachPage';
-import { ArchitecturePage } from './pages/ArchitecturePage';
 import { ApplicationsPage } from './pages/ApplicationsPage';
 import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
@@ -17,7 +16,6 @@ export default function App() {
     const cleanPath = pathname.toLowerCase().replace(/\/$/, '') || '/';
     if (cleanPath === '/aakashavani') return 'aakashavani';
     if (cleanPath === '/approach') return 'approach';
-    if (cleanPath === '/architecture') return 'architecture';
     if (cleanPath === '/applications') return 'applications';
     if (cleanPath === '/about') return 'about';
     if (cleanPath === '/contact') return 'contact';
@@ -28,7 +26,6 @@ export default function App() {
     switch (page) {
       case 'aakashavani': return '/aakashavani';
       case 'approach': return '/approach';
-      case 'architecture': return '/architecture';
       case 'applications': return '/applications';
       case 'about': return '/about';
       case 'contact': return '/contact';
@@ -40,7 +37,6 @@ export default function App() {
     switch (page) {
       case 'aakashavani': return 'Aakashavani — Financial World Model | VEIRON';
       case 'approach': return 'The World-Model Approach | VEIRON';
-      case 'architecture': return '9-Layer Architecture | VEIRON';
       case 'applications': return 'Institutional Applications | VEIRON';
       case 'about': return 'Mission & Philosophy | VEIRON';
       case 'contact': return 'Contact & Briefing | VEIRON';
@@ -85,25 +81,18 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF8F5] text-[#141413] selection:bg-[#E5182B]/20 selection:text-[#141413]">
       {/* Top Navbar */}
-      <Navbar currentPage={currentPage} onNavigate={handleNavigate} />
-
-      {/* ASCII Loading Animation Transition Bar */}
-      {isTransitioning && (
-        <div className="sticky top-14 sm:top-16 z-40">
-          <AsciiLoader
-            variant="banner"
-            label={transitionLabel}
-            durationMs={450}
-          />
-        </div>
-      )}
+      <Navbar 
+        currentPage={currentPage} 
+        onNavigate={handleNavigate} 
+        isTransitioning={isTransitioning}
+        transitionLabel={transitionLabel}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1">
         {currentPage === 'home' && <HomePage onNavigate={handleNavigate} />}
         {currentPage === 'aakashavani' && <AakashavaniPage onNavigate={handleNavigate} />}
         {currentPage === 'approach' && <ApproachPage onNavigate={handleNavigate} />}
-        {currentPage === 'architecture' && <ArchitecturePage onNavigate={handleNavigate} />}
         {currentPage === 'applications' && <ApplicationsPage onNavigate={handleNavigate} />}
         {currentPage === 'about' && <AboutPage onNavigate={handleNavigate} />}
         {currentPage === 'contact' && <ContactPage onNavigate={handleNavigate} />}

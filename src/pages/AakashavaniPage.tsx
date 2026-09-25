@@ -3,7 +3,6 @@ import { Page } from '../types';
 import { AakashavaniLogo } from '../components/logos/AakashavaniLogo';
 import { SimulationConsole } from '../components/SimulationConsole';
 import { ModelEvaluationHub } from '../components/ModelEvaluationHub';
-import { ArchitectureGraph } from '../components/ArchitectureGraph';
 import { HorizonBanner } from '../components/HorizonBanner';
 import { 
   ArrowRight, 
@@ -13,9 +12,9 @@ import {
   Scale, 
   Layers, 
   CheckCircle2, 
-  Flame,
-  Clock,
-  Compass
+  Flame, 
+  Clock, 
+  Compass 
 } from 'lucide-react';
 
 interface AakashavaniPageProps {
@@ -35,9 +34,7 @@ export const AakashavaniPage: React.FC<AakashavaniPageProps> = ({ onNavigate }) 
                   VEIRON WORLD MODEL · INSTANCE 01
                 </span>
                 <span>·</span>
-                <span className="text-[#141413]">CODE: AKHVNI-0.1.2</span>
-                <span>·</span>
-                <span className="text-emerald-600 font-medium">STATUS: EARLY PROTOTYPE</span>
+                <span className="text-[#141413]">AKHVNI-0.1.2</span>
               </div>
 
               <div className="flex items-center gap-4">
@@ -85,9 +82,8 @@ export const AakashavaniPage: React.FC<AakashavaniPageProps> = ({ onNavigate }) 
 
             <div className="lg:col-span-4">
               <div className="p-6 bg-white border border-[#E3E0D8] space-y-4">
-                <div className="font-mono text-xs text-[#87857F] uppercase tracking-wider pb-3 border-b border-[#F0EEE6] flex items-center justify-between">
-                  <span>TELEMETRY SNAPSHOT</span>
-                  <span className="text-emerald-600 font-bold">ONLINE</span>
+                <div className="font-mono text-xs text-[#87857F] uppercase tracking-wider pb-3 border-b border-[#F0EEE6]">
+                  <span>SYSTEM METRICS</span>
                 </div>
                 <div className="space-y-3 font-mono text-xs text-[#4F4D47]">
                   <div className="flex justify-between">
@@ -95,8 +91,8 @@ export const AakashavaniPage: React.FC<AakashavaniPageProps> = ({ onNavigate }) 
                     <span className="text-[#141413] font-semibold">AKHVNI-0.1.2</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#87857F]">ACTIVE REGIME:</span>
-                    <span className="text-[#E5182B] font-semibold">CROSS_ASSET_TRANSITION</span>
+                    <span className="text-[#87857F]">ENVIRONMENT:</span>
+                    <span className="text-[#141413] font-semibold">GLOBAL_MACRO_FX</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#87857F]">EPISTEMIC UNCERTAINTY:</span>
@@ -149,58 +145,8 @@ export const AakashavaniPage: React.FC<AakashavaniPageProps> = ({ onNavigate }) 
         </div>
       </section>
 
-      {/* Key Cognitive Layers */}
-      <section className="py-20 sm:py-28 border-b border-[#E3E0D8] bg-[#FAF8F5]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-3xl space-y-4 mb-16">
-            <div className="font-mono text-xs uppercase tracking-widest text-[#E5182B]">
-              COGNITIVE ANATOMY
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-serif text-[#141413] tracking-tight">
-              The Seven Operational Layers of Aakashavani
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              { num: '01', name: 'World State', desc: 'Continuously updated representation of the financial environment, aligning level-3 order books, yields, and macro statements.' },
-              { num: '02', name: 'Belief State', desc: 'Probabilistic distributions over market regimes and explicit epistemic uncertainty quantification.' },
-              { num: '03', name: 'Specialist Intelligence', desc: 'Domain-constrained analytical engines running quantitative models across macro, volatility surfaces, and microstructure.' },
-              { num: '04', name: 'Dynamic Orchestration', desc: 'Selects and schedules specialist reasoning units based on real-time uncertainty surges.' },
-              { num: '05', name: 'Adversarial Reasoning', desc: 'Dialectical red-teaming where competing hypotheses challenge one another to uncover false assumptions.' },
-              { num: '06', name: 'Verification', desc: 'Deterministic proof checks testing claims against mathematical bounds and regulatory capital mandates.' },
-            ].map((layer, idx) => (
-              <div key={idx} className="p-6 bg-white border border-[#E3E0D8] space-y-3 hover:border-[#141413] transition-colors">
-                <div className="font-mono text-xs text-[#E5182B] font-bold">
-                  LAYER {layer.num}
-                </div>
-                <h3 className="text-lg font-serif font-bold text-[#141413]">
-                  {layer.name}
-                </h3>
-                <p className="text-xs text-[#66645E] leading-relaxed">
-                  {layer.desc}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* 7th Layer: Decision Intelligence */}
-          <div className="mt-8 p-8 bg-[#141413] text-[#FAF8F5] space-y-3">
-            <div className="font-mono text-xs text-[#E5182B] uppercase tracking-wider">
-              LAYER 07 · THE SYNTHESIS
-            </div>
-            <h3 className="text-xl sm:text-2xl font-serif">
-              Decision Intelligence: Evidence + Belief + Uncertainty + Risk + Potential Action
-            </h3>
-            <p className="text-xs sm:text-sm text-[#A19F97] leading-relaxed max-w-3xl">
-              Aakashavani never produces standalone predictions. Every output is an actionable institutional decision state containing the empirical evidence chain, Bayesian confidence interval, quantified epistemic risk envelope, and pre-computed invalidation thresholds.
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* Institutional Pilot CTA */}
-      <section className="py-20 sm:py-24 bg-[#F7F5F0]">
+      <section className="py-20 sm:py-24 bg-[#FAF8F5]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
           <h2 className="text-3xl sm:text-4xl font-serif text-[#141413] tracking-tight">
             Deploy Aakashavani in Your Fund or Desk

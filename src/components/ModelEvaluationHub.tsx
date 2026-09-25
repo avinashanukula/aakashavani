@@ -87,7 +87,7 @@ export const ModelEvaluationHub: React.FC = () => {
           Aakashavani Technical System Report
         </h2>
         <p className="text-xs sm:text-sm text-[#66645E] leading-relaxed">
-          A rigorous overview of model architecture, safety boundaries, adversarial evaluation benchmarks, and continuous epistemic verification protocols.
+          A rigorous overview of model capabilities, safety boundaries, adversarial evaluation benchmarks, and continuous epistemic verification protocols.
         </p>
       </div>
 
@@ -102,7 +102,7 @@ export const ModelEvaluationHub: React.FC = () => {
           }`}
         >
           <span className="font-mono text-xs text-[#E5182B]">01</span>
-          <span>Model Architecture Report</span>
+          <span>System Capability Report</span>
         </button>
 
         <button
@@ -163,7 +163,7 @@ export const ModelEvaluationHub: React.FC = () => {
 
             <div className="p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
               <div className="md:col-span-3 font-semibold text-[#141413] font-mono text-xs uppercase tracking-wider">
-                Architecture Scope
+                System Scope
               </div>
               <div className="md:col-span-9 text-[#42403B] leading-relaxed">
                 {currentVariant.description}
