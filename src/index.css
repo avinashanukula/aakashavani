@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: 'Newsreader', Garamond, 'Times New Roman', Georgia, serif;
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --color-veiron-red: #e5182b;
+  --color-veiron-red-light: #ff2a3d;
+  --color-anthropic-cream: #FAF8F5;
+  --color-anthropic-stone: #F3EFEA;
+  --color-anthropic-surface: #EDE8DF;
+  --color-anthropic-text: #141413;
+  --color-anthropic-muted: #66645E;
+  --color-anthropic-border: #E3E0D8;
+  --color-anthropic-dark: #121211;
+  --color-anthropic-dark-surface: #181817;
+  --color-anthropic-dark-border: #262624;
+}
+
+@layer base {
+  html {
+    scroll-padding-bottom: 96px;
+  }
+
+  body {
+    background-color: #FAF8F5;
+    color: #141413;
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    padding-bottom: 84px;
+  }
+}
+
+/* Utilities for Dock & Scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Editorial Serif Headings */
+.font-editorial {
+  font-family: 'Newsreader', Garamond, Georgia, serif;
+}
+
+.font-display-serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+/* Fine hairline borders matching Anthropic style */
+.border-anthropic {
+  border-color: #E3E0D8;
+}
+
+.border-anthropic-dark {
+  border-color: #262624;
+}
+
+/* Clean Anthropic-style cards with hairline dividers */
+.anthropic-card {
+  background-color: #FAF8F5;
+  border-color: #E3E0D8;
+  transition: all 0.2s ease-in-out;
+}
+
+.anthropic-card:hover {
+  background-color: #F6F4EE;
+}
+
+/* Subtle editorial paper grain */
+.bg-paper-subtle {
+  background-image: radial-gradient(rgba(20, 20, 19, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Clean technical scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FAF8F5;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D8D4CA;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #B8B3A8;
+}
