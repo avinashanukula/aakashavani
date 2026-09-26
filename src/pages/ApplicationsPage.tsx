@@ -1,6 +1,6 @@
 import React from 'react';
 import { Page } from '../types';
-import { TrendingUp, Landmark, Building2, Scale, ArrowRight } from 'lucide-react';
+import { TrendingUp, Landmark, Building2, Scale, ShieldCheck, ArrowRight } from 'lucide-react';
 
 interface ApplicationsPageProps {
   onNavigate: (page: Page) => void;

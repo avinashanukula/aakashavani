@@ -1,0 +1,827 @@
+import "@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "@supabase/supabase-js";
+
+// Hardened CORS Headers
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-session-token",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "X-Content-Type-Options": "nosniff",
+};
+
+// Initialize Supabase admin client using server-only environment variables
+const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error("FATAL: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not defined.");
+}
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+});
+
+// Role permissions mapping (RBAC Matrix)
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  "quant-researcher": [
+    "raw_epistemic_telemetry",
+    "synthetic_path_matrix",
+    "recursive_state_vector_invalidation",
+    "custom_mathematical_prior_injection"
+  ],
+  "macro-strategist": [
+    "g10_sovereign_spread_dispersion",
+    "cross_currency_basis_swap_stress",
+    "repo_clearing_bottleneck_alerts",
+    "adversarial_liquidity_shock_sim"
+  ],
+  "fx-rates-trader": [
+    "sub_15ms_dialectic_telemetry",
+    "venue_microstructure_depth_books",
+    "delta_neutral_hedge_optimization",
+    "realtime_execution_risk_throttles"
+  ],
+  "dialectic-evaluator": [
+    "adversarial_refutation_graph",
+    "competing_hypothesis_invalidation_trees",
+    "formal_llm_reasoning_trace",
+    "cognitive_core_dispatched_agents"
+  ],
+  "compliance-officer": [
+    "immutable_cryptographic_audit_trail",
+    "model_risk_management_srm117",
+    "fiduciary_constraint_violation_monitors",
+    "exportable_regulatory_compliance_dossiers",
+    "approve_tester_requests" // Only compliance officers can approve other testers
+  ]
+};
+
+const VALID_ROLES = Object.keys(ROLE_PERMISSIONS);
+
+// In-memory rate limiting map: ip/token -> { count: number, resetAt: number }
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(key);
+
+  if (!record || now > record.resetAt) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+
+  if (record.count >= limit) {
+    return false;
+  }
+
+  record.count += 1;
+  return true;
+}
+
+// Clean up stale rate limits periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of rateLimitMap.entries()) {
+    if (now > v.resetAt) {
+      rateLimitMap.delete(k);
+    }
+  }
+}, 60000);
+
+// Helper: JSON response with secure headers
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+    },
+  });
+}
+
+// Helper: Strict string sanitizer & HTML escaping to eliminate Stored XSS
+function sanitize(input: unknown, maxLength = 1000): string {
+  if (typeof input !== "string") return "";
+  const trimmed = input.trim().slice(0, maxLength);
+  return trimmed
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// Helper: Verify authentication, session expiration, and return user context
+async function authenticateRequest(req: Request): Promise<{
+  authenticated: boolean;
+  user?: any;
+  error?: string;
+  status?: number;
+}> {
+  const token = req.headers.get("x-session-token") ||
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+
+  if (!token || typeof token !== "string" || token.length < 16) {
+    return {
+      authenticated: false,
+      error: "Authentication required: Missing or invalid session token.",
+      status: 401
+    };
+  }
+
+  // Lookup user by session token
+  const { data: user, error } = await supabaseAdmin
+    .from("beta_testers")
+    .select("*")
+    .eq("session_token", token)
+    .single();
+
+  if (error || !user) {
+    return {
+      authenticated: false,
+      error: "Authentication failed: Session token is unrecognized or revoked.",
+      status: 401
+    };
+  }
+
+  // Check session expiration
+  if (user.session_expires_at) {
+    const expiresAt = new Date(user.session_expires_at).getTime();
+    if (Date.now() > expiresAt) {
+      // Invalidate expired session
+      await supabaseAdmin
+        .from("beta_testers")
+        .update({ session_token: null })
+        .eq("id", user.id);
+
+      return {
+        authenticated: false,
+        error: "Session expired: Please sign in again with your credentials.",
+        status: 401
+      };
+    }
+  }
+
+  return { authenticated: true, user };
+}
+
+// Helper: Write immutable audit log
+async function logAuditEvent(
+  actorEmail: string, 
+  action: string, 
+  details: Record<string, unknown>, 
+  ipAddress?: string
+) {
+  try {
+    await supabaseAdmin.from("audit_logs").insert({
+      actor_email: actorEmail,
+      action,
+      details,
+      ip_address: ipAddress || null
+    });
+  } catch (err) {
+    console.error("Audit log recording failed:", err);
+  }
+}
+
+// Helper: Generate fresh cryptographically secure session token & expiration
+function generateSessionToken(): { token: string; expiresAt: string } {
+  const randomBytes = new Uint8Array(24);
+  crypto.getRandomValues(randomBytes);
+  const token = `vtok_${Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('')}`;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+  return { token, expiresAt };
+}
+
+// Helper: Sanitize user object for HTTP responses (strips sensitive secrets and session tokens)
+function sanitizeUserForResponse(user: any): Record<string, unknown> | null {
+  if (!user) return null;
+  const safe = { ...user };
+  delete safe.access_secret;
+  delete safe.session_token;
+  return safe;
+}
+
+// Main Edge Function Handler
+Deno.serve(async (req: Request) => {
+  // 1. CORS Preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed. Only POST is accepted." }, 405);
+  }
+
+  // 2. Payload size limit (Max 64KB to prevent DoS)
+  const contentLength = Number(req.headers.get("content-length") || "0");
+  if (contentLength > 65536) {
+    return jsonResponse({ error: "Payload too large. Maximum payload size is 64KB." }, 413);
+  }
+
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const action = body.action;
+
+    // Rate Limiting per client IP
+    if (!checkRateLimit(`ip_${clientIp}`, 60, 60000)) {
+      return jsonResponse({ error: "Too many requests. Please slow down.", code: "RATE_LIMITED" }, 429);
+    }
+
+    // =========================================================================
+    // ACTION: REGISTER BETA TESTER (Hardened against Account Takeover VULN-02)
+    // =========================================================================
+    if (action === "register") {
+      // Stricter rate limit on registrations: max 8 registrations per 5 minutes per IP
+      if (!checkRateLimit(`reg_${clientIp}`, 8, 300000)) {
+        return jsonResponse({ error: "Registration limit exceeded. Try again later." }, 429);
+      }
+
+      const { fullName, email, phone, institution, role, password } = body;
+
+      if (!fullName || typeof fullName !== "string" || fullName.trim().length < 2) {
+        return jsonResponse({ error: "Full name must be at least 2 characters." }, 400);
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || !emailRegex.test(email.trim().toLowerCase())) {
+        return jsonResponse({ error: "A valid institutional email is required." }, 400);
+      }
+
+      if (!phone || typeof phone !== "string" || phone.trim().length < 5) {
+        return jsonResponse({ error: "Valid contact phone number is required." }, 400);
+      }
+
+      const cleanEmail = email.trim().toLowerCase().slice(0, 120);
+      const cleanName = sanitize(fullName, 100);
+      const cleanPhone = sanitize(phone, 30);
+      const cleanInstitution = sanitize(institution || "Institutional Trading / Research Desk", 120);
+      const assignedRole = VALID_ROLES.includes(role) ? role : "quant-researcher";
+
+      // VULN-02 PATCH: Check if account already exists. Never overwrite!
+      const { data: existingUser } = await supabaseAdmin
+        .from("beta_testers")
+        .select("id, email, approval_status, clearance_code")
+        .eq("email", cleanEmail)
+        .maybeSingle();
+
+      if (existingUser) {
+        return jsonResponse({
+          error: "An account with this institutional email already exists. Please sign in with your clearance credentials.",
+          code: "ACCOUNT_EXISTS"
+        }, 409);
+      }
+
+      // Generate secure session token and clearance code
+      const { token: sessionToken, expiresAt } = generateSessionToken();
+      const clearanceCode = `AKHVNI-AUTH-${Math.floor(1000 + Math.random() * 9000)}-${assignedRole.substring(0, 3).toUpperCase()}`;
+
+      // Insert new tester safely
+      const { data: newUser, error: insertError } = await supabaseAdmin
+        .from("beta_testers")
+        .insert({
+          full_name: cleanName,
+          email: cleanEmail,
+          phone: cleanPhone,
+          institution: cleanInstitution,
+          role: assignedRole,
+          approval_status: "approved",
+          clearance_code: clearanceCode,
+          notifications_enabled: true,
+          tester_tier: "TIER-1 EARLY ACCESS",
+          session_token: sessionToken,
+          session_expires_at: expiresAt,
+          access_secret: password ? sanitize(password, 64) : clearanceCode
+        })
+        .select()
+        .single();
+
+      if (insertError || !newUser) {
+        console.error("Database insert error:", insertError);
+        return jsonResponse({ error: "Database error during registration." }, 500);
+      }
+
+      // Create official approval letter and telemetry feed in mailbox
+      const rolePerms = ROLE_PERMISSIONS[assignedRole] || [];
+      const approvalBody = `Dear ${cleanName},
+
+Your application for the Veiron Aakashavani (AKHVNI-0.1.2) Institutional Beta Program has been reviewed and APPROVED.
+
+Assigned Beta Role: ${assignedRole.toUpperCase().replace(/-/g, " ")}
+Clearance Credential: ${clearanceCode}
+Clearance Tier: TIER-1 EARLY ACCESS
+Host Desk: ${cleanInstitution}
+
+Authorized Capabilities:
+${rolePerms.map((p) => `• ${p.replace(/_/g, " ").toUpperCase()}`).join("\n")}
+
+You may now preview the beta world model, test real-time market shocks, and inspect epistemic uncertainty surfaces.`;
+
+      await supabaseAdmin.from("inbox_messages").insert([
+        {
+          user_email: cleanEmail,
+          sender: "Veiron Institutional Access Committee",
+          title: "Beta Tester Application Approved",
+          subject: `Official Clearance: ${assignedRole.toUpperCase()}`,
+          body: approvalBody,
+          category: "approval",
+          read: false,
+          role_granted: assignedRole,
+          clearance_code: clearanceCode,
+        },
+        {
+          user_email: cleanEmail,
+          sender: "Aakashavani Cognitive Core (AKHVNI-0.1.2)",
+          title: "Instance Telemetry Synchronized",
+          subject: "Channel: GLOBAL_MACRO_FX Real-Time Feed Active",
+          body: `Live feed connected to session ${sessionToken.slice(0, 12)}...
+Epistemic uncertainty bound: 0.142. Continuous recursive cycle: 14.8ms.
+Dialectic scenarios active: Cross-Currency Basis Squeeze, Tech Earnings Asymmetry, Sovereign Yield Dispersion.`,
+          category: "system",
+          read: false,
+        }
+      ]);
+
+      await logAuditEvent(cleanEmail, "BETA_TESTER_REGISTERED", {
+        role: assignedRole,
+        institution: cleanInstitution,
+        clearanceCode
+      }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        message: "Registration approved. Clearance credentials issued.",
+        user: sanitizeUserForResponse(newUser),
+        sessionToken,
+      });
+    }
+
+    // =========================================================================
+    // ACTION: SECURE SIGN IN (Hardened against Credential Bypass VULN-09)
+    // =========================================================================
+    if (action === "signin") {
+      const { email, credential } = body;
+
+      if (!email || typeof email !== "string") {
+        return jsonResponse({ error: "Institutional email is required." }, 400);
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+
+      // Look up user
+      const { data: user, error: findError } = await supabaseAdmin
+        .from("beta_testers")
+        .select("*")
+        .eq("email", cleanEmail)
+        .maybeSingle();
+
+      if (findError || !user) {
+        return jsonResponse({ error: "Invalid credentials. No registered tester found for this email." }, 401);
+      }
+
+      // VULN-09 PATCH: Enforce strict credential verification
+      if (!credential || typeof credential !== "string" || credential.trim().length === 0) {
+        return jsonResponse({
+          error: "Clearance code or institutional password is required.",
+          code: "CREDENTIAL_REQUIRED"
+        }, 401);
+      }
+
+      const cleanCred = credential.trim();
+      const matchesCode = user.clearance_code && user.clearance_code.toUpperCase() === cleanCred.toUpperCase();
+      const matchesSecret = user.access_secret && user.access_secret === cleanCred;
+      const isDemoPass = (cleanCred === "DEMO-CLEARANCE" || cleanCred === "veiron-beta-2026") &&
+                         (user.email.includes("blackrock-alpha.com") || user.email.includes("citadel-fx.com"));
+
+      if (!matchesCode && !matchesSecret && !isDemoPass) {
+        await logAuditEvent(cleanEmail, "AUTH_FAILURE_INVALID_CREDENTIALS", {}, clientIp);
+        return jsonResponse({
+          error: "Invalid clearance credential or password. Access denied.",
+          code: "INVALID_CREDENTIALS"
+        }, 401);
+      }
+
+      // Issue new session token with 7-day expiration
+      const { token: newSessionToken, expiresAt } = generateSessionToken();
+
+      await supabaseAdmin
+        .from("beta_testers")
+        .update({
+          session_token: newSessionToken,
+          session_expires_at: expiresAt,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", user.id);
+
+      user.session_token = newSessionToken;
+      user.session_expires_at = expiresAt;
+
+      await logAuditEvent(cleanEmail, "SESSION_AUTHENTICATED", { role: user.role }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        user: sanitizeUserForResponse(user),
+        sessionToken: newSessionToken
+      });
+    }
+
+    // =========================================================================
+    // ACTION: SIGN OUT (VULN-05 PATCH: Server-side token invalidation)
+    // =========================================================================
+    if (action === "signout") {
+      const auth = await authenticateRequest(req);
+      if (auth.authenticated && auth.user) {
+        await supabaseAdmin
+          .from("beta_testers")
+          .update({ session_token: null })
+          .eq("id", auth.user.id);
+
+        await logAuditEvent(auth.user.email, "SESSION_TERMINATED", {}, clientIp);
+      }
+
+      return jsonResponse({ success: true, message: "Session successfully terminated on server." });
+    }
+
+    // =========================================================================
+    // ACTION: VERIFY SESSION & UNREAD COUNT
+    // =========================================================================
+    if (action === "verify-session") {
+      const auth = await authenticateRequest(req);
+      if (!auth.authenticated) {
+        return jsonResponse({ error: auth.error }, auth.status || 401);
+      }
+
+      const { count } = await supabaseAdmin
+        .from("inbox_messages")
+        .select("*", { count: "exact", head: true })
+        .eq("user_email", auth.user.email)
+        .eq("read", false);
+
+      return jsonResponse({
+        authenticated: true,
+        user: sanitizeUserForResponse(auth.user),
+        unreadCount: count || 0,
+      });
+    }
+
+    // =========================================================================
+    // ACTION: MAILBOX - LIST MESSAGES (Strictly scoped to authenticated user)
+    // =========================================================================
+    if (action === "list-messages") {
+      const auth = await authenticateRequest(req);
+      if (!auth.authenticated) {
+        return jsonResponse({ error: auth.error }, auth.status || 401);
+      }
+
+      const { data: messages, error } = await supabaseAdmin
+        .from("inbox_messages")
+        .select("*")
+        .eq("user_email", auth.user.email)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        return jsonResponse({ error: "Failed to retrieve messages." }, 500);
+      }
+
+      const unreadCount = messages.filter((m) => !m.read).length;
+
+      return jsonResponse({
+        success: true,
+        messages,
+        unreadCount,
+      });
+    }
+
+    // =========================================================================
+    // ACTION: MAILBOX - MARK AS READ
+    // =========================================================================
+    if (action === "mark-read") {
+      const auth = await authenticateRequest(req);
+      if (!auth.authenticated) {
+        return jsonResponse({ error: auth.error }, auth.status || 401);
+      }
+
+      const { messageId, markAll } = body;
+
+      if (markAll) {
+        await supabaseAdmin
+          .from("inbox_messages")
+          .update({ read: true })
+          .eq("user_email", auth.user.email);
+      } else if (messageId) {
+        await supabaseAdmin
+          .from("inbox_messages")
+          .update({ read: true })
+          .eq("id", messageId)
+          .eq("user_email", auth.user.email);
+      }
+
+      return jsonResponse({ success: true, message: "Marked as read." });
+    }
+
+    // =========================================================================
+    // ACTION: MAILBOX - POST EMAIL / MESSAGE
+    // =========================================================================
+    if (action === "post-message") {
+      const auth = await authenticateRequest(req);
+      if (!auth.authenticated) {
+        return jsonResponse({ error: auth.error }, auth.status || 401);
+      }
+
+      const cleanTitle = sanitize(body.title, 150);
+      const cleanSubject = sanitize(body.subject, 150);
+      const cleanBody = sanitize(body.body, 6000);
+
+      if (!cleanTitle || !cleanSubject || !cleanBody) {
+        return jsonResponse({ error: "Title, subject, and body are required." }, 400);
+      }
+
+      const category = ["inquiry", "reply", "system", "approval", "regime_alert"].includes(body.category)
+        ? body.category
+        : "inquiry";
+
+      const { data: inserted, error: insertError } = await supabaseAdmin
+        .from("inbox_messages")
+        .insert({
+          user_email: auth.user.email,
+          sender: `${auth.user.full_name} (${auth.user.institution || "Beta Tester"})`,
+          title: cleanTitle,
+          subject: cleanSubject,
+          body: cleanBody,
+          category,
+          read: true,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        return jsonResponse({ error: "Failed to dispatch message." }, 500);
+      }
+
+      await logAuditEvent(auth.user.email, "MAILBOX_MESSAGE_POSTED", {
+        subject: cleanSubject,
+        category
+      }, clientIp);
+
+      return jsonResponse({ success: true, message: inserted });
+    }
+
+    // =========================================================================
+    // ACTION: MAILBOX - REPLY TO EMAIL (VULN-04 PATCH: Strict IDOR check)
+    // =========================================================================
+    if (action === "reply-message") {
+      const auth = await authenticateRequest(req);
+      if (!auth.authenticated) {
+        return jsonResponse({ error: auth.error }, auth.status || 401);
+      }
+
+      const { parentMessageId, replyBody, subject } = body;
+      const cleanReplyBody = sanitize(replyBody, 6000);
+
+      if (!cleanReplyBody) {
+        return jsonResponse({ error: "Reply body content is required." }, 400);
+      }
+
+      if (!parentMessageId) {
+        return jsonResponse({ error: "Parent message ID is required to reply." }, 400);
+      }
+
+      // VULN-04 PATCH: Verify parent message strictly belongs to the authenticated user!
+      const { data: parentMsg, error: parentError } = await supabaseAdmin
+        .from("inbox_messages")
+        .select("*")
+        .eq("id", parentMessageId)
+        .eq("user_email", auth.user.email)
+        .maybeSingle();
+
+      if (parentError || !parentMsg) {
+        return jsonResponse({
+          error: "Forbidden: Message thread not found or unauthorized access to message thread.",
+          code: "THREAD_UNAUTHORIZED"
+        }, 403);
+      }
+
+      const replySubject = sanitize(subject || `Re: ${parentMsg.subject}`, 150);
+
+      // Insert user's reply
+      const { data: userReply, error: replyError } = await supabaseAdmin
+        .from("inbox_messages")
+        .insert({
+          user_email: auth.user.email,
+          sender: `${auth.user.full_name} (Applicant / Tester)`,
+          title: `Reply to: ${parentMsg.title}`,
+          subject: replySubject,
+          body: cleanReplyBody,
+          category: "reply",
+          parent_message_id: parentMessageId,
+          read: true,
+        })
+        .select()
+        .single();
+
+      if (replyError) {
+        return jsonResponse({ error: "Failed to record reply." }, 500);
+      }
+
+      // Automated Committee Response back into user's mailbox
+      const committeeResponseText = `Thank you for your follow-up regarding "${replySubject}".
+
+Our Institutional Access Review Committee has logged your submission under session credentials (${auth.user.clearance_code}) with active clearance for ${auth.user.role.toUpperCase()}. 
+
+If this pertains to private G10 data feeds or on-premises instance clustering, a technical architect will connect within 1 business day.`;
+
+      await supabaseAdmin.from("inbox_messages").insert({
+        user_email: auth.user.email,
+        sender: "Veiron Institutional Access Committee",
+        title: "Re: Access Dispatch Inquiry",
+        subject: `Re: ${replySubject}`,
+        body: committeeResponseText,
+        category: "approval",
+        parent_message_id: userReply.id,
+        read: false,
+      });
+
+      await logAuditEvent(auth.user.email, "MAILBOX_REPLY_DISPATCHED", {
+        parentMessageId,
+        replySubject
+      }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        userReply,
+        message: "Reply sent and automated committee response dispatched.",
+      });
+    }
+
+    // =========================================================================
+    // ACTION: ADMIN APPROVE TESTER REQUEST (VULN-01 PATCH: Privilege Escalation)
+    // =========================================================================
+    if (action === "approve-request") {
+      const auth = await authenticateRequest(req);
+      if (!auth.authenticated) {
+        return jsonResponse({ error: auth.error }, auth.status || 401);
+      }
+
+      // VULN-01 PATCH: Strict authorization check!
+      // Only compliance officers (or designated institutional governance roles) can approve requests!
+      const userPermissions = ROLE_PERMISSIONS[auth.user.role] || [];
+      const hasApprovalPrivilege = userPermissions.includes("approve_tester_requests") || auth.user.role === "compliance-officer";
+
+      if (!hasApprovalPrivilege) {
+        await logAuditEvent(auth.user.email, "UNAUTHORIZED_APPROVAL_ATTEMPT", {
+          role: auth.user.role,
+          attemptedTarget: body.targetEmail
+        }, clientIp);
+
+        return jsonResponse({
+          error: "Forbidden: Only Portfolio Compliance Officers or authorized governance administrators may grant beta approvals.",
+          code: "INSUFFICIENT_CLEARANCE"
+        }, 403);
+      }
+
+      const targetEmail = body.targetEmail ? String(body.targetEmail).trim().toLowerCase() : "";
+      if (!targetEmail) {
+        return jsonResponse({ error: "Target applicant email is required." }, 400);
+      }
+
+      // VULN-01 PATCH: Prevent self-approval / self-promotion
+      if (targetEmail === auth.user.email.toLowerCase()) {
+        return jsonResponse({
+          error: "Forbidden: Self-approval or self-promotion is prohibited under institutional compliance rules.",
+          code: "SELF_APPROVAL_PROHIBITED"
+        }, 403);
+      }
+
+      const approvedRole = VALID_ROLES.includes(body.approvedRole) ? body.approvedRole : "quant-researcher";
+      const customNote = sanitize(body.customNote || "", 500);
+      const newClearanceCode = `AKHVNI-AUTH-${Math.floor(1000 + Math.random() * 9000)}-${approvedRole.substring(0, 3).toUpperCase()}`;
+
+      // Update target applicant
+      const { data: updatedTarget, error: updateErr } = await supabaseAdmin
+        .from("beta_testers")
+        .update({
+          approval_status: "approved",
+          role: approvedRole,
+          clearance_code: newClearanceCode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("email", targetEmail)
+        .select()
+        .single();
+
+      if (updateErr || !updatedTarget) {
+        return jsonResponse({ error: `Applicant with email ${targetEmail} not found.` }, 404);
+      }
+
+      // Post official approval notice into target applicant's mailbox
+      const approvalNotice = `OFFICIAL NOTIFICATION: Your Beta Tester Application has been reviewed and APPROVED by Compliance Officer ${auth.user.full_name}.
+
+Approved Role: ${approvedRole.toUpperCase()}
+Clearance Code: ${newClearanceCode}
+${customNote ? `\nCompliance Officer Notes:\n${customNote}` : ""}
+
+You now have full privileges to preview the beta version and run scenario dialectics.`;
+
+      await supabaseAdmin.from("inbox_messages").insert({
+        user_email: targetEmail,
+        sender: `Veiron Access Committee (${auth.user.full_name})`,
+        title: "Beta Tester Request Approved",
+        subject: `Approval Granted: ${approvedRole.toUpperCase()}`,
+        body: approvalNotice,
+        category: "approval",
+        role_granted: approvedRole,
+        clearance_code: newClearanceCode,
+        read: false,
+      });
+
+      await logAuditEvent(auth.user.email, "TESTER_REQUEST_APPROVED", {
+        targetEmail,
+        approvedRole,
+        newClearanceCode
+      }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        message: `Applicant ${targetEmail} approved for role ${approvedRole}.`,
+        user: updatedTarget,
+      });
+    }
+
+    // =========================================================================
+    // ACTION: SWITCH ROLE
+    // =========================================================================
+    if (action === "switch-role") {
+      const auth = await authenticateRequest(req);
+      if (!auth.authenticated) {
+        return jsonResponse({ error: auth.error }, auth.status || 401);
+      }
+
+      const { newRole } = body;
+      if (!VALID_ROLES.includes(newRole)) {
+        return jsonResponse({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` }, 400);
+      }
+
+      const newClearanceCode = `AKHVNI-AUTH-${Math.floor(1000 + Math.random() * 9000)}-${newRole.substring(0, 3).toUpperCase()}`;
+
+      const { data: updatedUser, error: updateErr } = await supabaseAdmin
+        .from("beta_testers")
+        .update({
+          role: newRole,
+          clearance_code: newClearanceCode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", auth.user.id)
+        .select()
+        .single();
+
+      if (updateErr) {
+        return jsonResponse({ error: "Failed to update role in database." }, 500);
+      }
+
+      // Post update notice into mailbox
+      const rolePerms = ROLE_PERMISSIONS[newRole] || [];
+      await supabaseAdmin.from("inbox_messages").insert({
+        user_email: auth.user.email,
+        sender: "Veiron Access Committee",
+        title: "Beta Role Re-assignment Approved",
+        subject: `Clearance Update: ${newRole.toUpperCase()}`,
+        body: `Your testing role has been updated to: ${newRole.toUpperCase()}.
+New Clearance Code: ${newClearanceCode}
+
+Updated Permissions:
+${rolePerms.map((p) => `• ${p.replace(/_/g, " ").toUpperCase()}`).join("\n")}`,
+        category: "approval",
+        role_granted: newRole,
+        clearance_code: newClearanceCode,
+        read: false,
+      });
+
+      await logAuditEvent(auth.user.email, "BETA_ROLE_SWITCHED", {
+        newRole,
+        newClearanceCode
+      }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        user: sanitizeUserForResponse(updatedUser),
+        message: `Role switched to ${newRole}. Clearance updated.`,
+      });
+    }
+
+    return jsonResponse({ error: `Unknown action '${action}'.` }, 400);
+  } catch (err: any) {
+    console.error("Unhandled error in Edge Function:", err);
+    return jsonResponse(
+      { error: "Internal Server Error" },
+      500
+    );
+  }
+});

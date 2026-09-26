@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Page } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { getBetaRoleInfo } from '../data/betaRoles';
 import { AakashavaniLogo } from '../components/logos/AakashavaniLogo';
 import { SimulationConsole } from '../components/SimulationConsole';
 import { ModelEvaluationHub } from '../components/ModelEvaluationHub';
@@ -22,6 +24,7 @@ interface AakashavaniPageProps {
 }
 
 export const AakashavaniPage: React.FC<AakashavaniPageProps> = ({ onNavigate }) => {
+  const { currentUser, launchLiveBeta } = useAuth();
   return (
     <div className="relative min-h-screen bg-[#FAF8F5] text-[#141413]">
       {/* Product Hero */}
@@ -60,14 +63,12 @@ export const AakashavaniPage: React.FC<AakashavaniPageProps> = ({ onNavigate }) 
 
               <div className="pt-2 flex flex-wrap items-center gap-4">
                 <button
-                  onClick={() => {
-                    const el = document.getElementById('simulation-section');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="px-6 py-3 bg-[#141413] hover:bg-[#2B2A28] text-[#FAF8F5] text-sm font-medium rounded-full transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+                  onClick={() => launchLiveBeta(onNavigate)}
+                  className="px-6 py-3 bg-[#141413] hover:bg-[#2B2A28] text-[#FAF8F5] text-sm font-medium rounded-full transition-all flex items-center gap-2.5 cursor-pointer shadow-sm group"
                 >
-                  <Activity size={15} />
-                  <span>Launch Simulation Console</span>
+                  <Activity size={15} className="text-[#E5182B] group-hover:scale-110 transition-transform" />
+                  <span>Preview Beta Version</span>
+                  <ArrowUpRight size={14} className="text-[#87857F] group-hover:text-white transition-colors" />
                 </button>
 
                 <button
@@ -132,6 +133,65 @@ export const AakashavaniPage: React.FC<AakashavaniPageProps> = ({ onNavigate }) 
             <p className="text-sm sm:text-base text-[#66645E]">
               Test real institutional market shock scenarios to observe how Aakashavani establishes competing hypotheses, runs adversarial dialectics, and updates its decision state.
             </p>
+          </div>
+
+          {/* Beta Session Clearance Status Strip */}
+          <div className="mb-8 p-4 bg-white border border-[#E3E0D8] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            {currentUser ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-[#141413] text-white">
+                    <ShieldCheck size={18} className="text-[#E5182B]" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 font-mono text-xs">
+                      <span className="font-semibold text-[#141413]">AUTHORIZED BETA SESSION:</span>
+                      <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-semibold border border-emerald-300">
+                        APPROVED
+                      </span>
+                      <span className="text-[#87857F]">· {currentUser.clearanceCode}</span>
+                    </div>
+                    <div className="text-xs text-[#66645E]">
+                      Auditing as <span className="font-semibold text-[#141413]">{getBetaRoleInfo(currentUser.role).title}</span> ({currentUser.institution || 'Institutional Desk'})
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => launchLiveBeta(onNavigate)}
+                  className="px-5 py-2.5 bg-[#E5182B] hover:bg-[#FF2A3D] text-white text-xs font-semibold rounded-full transition-all shrink-0 cursor-pointer shadow-sm flex items-center gap-2 self-start sm:self-auto"
+                >
+                  <Activity size={14} />
+                  <span>Launch Live Simulation Desk</span>
+                  <ArrowUpRight size={13} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-[#FAF8F5] border border-[#E3E0D8] text-[#87857F]">
+                    <Activity size={18} />
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 font-mono text-xs text-[#87857F]">
+                      <span className="font-semibold text-[#141413]">GUEST BETA PREVIEW</span>
+                      <span>·</span>
+                      <span>PUBLIC TELEMETRY STREAM</span>
+                    </div>
+                    <div className="text-xs text-[#66645E]">
+                      Institutional authentication is required to access live simulation capabilities and shock injection controls.
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => onNavigate('auth')}
+                  className="px-4 py-2 bg-[#E5182B] hover:bg-[#FF2A3D] text-white text-xs font-semibold rounded-full transition-all shrink-0 cursor-pointer shadow-sm self-start sm:self-auto"
+                >
+                  Opt-In for Beta Testing
+                </button>
+              </div>
+            )}
           </div>
 
           <SimulationConsole />

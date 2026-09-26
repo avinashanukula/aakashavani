@@ -1,20 +1,24 @@
 import React from 'react';
 import { Page } from '../types';
+import { useAuth } from '../context/AuthContext';
 import { 
   Globe, 
   Activity, 
   Compass, 
   Boxes, 
   BookOpen, 
-  ArrowUpRight 
+  ArrowUpRight,
+  Inbox
 } from 'lucide-react';
 
 interface DockNavProps {
   currentPage: Page;
   onNavigate: (page: Page) => void;
+  onOpenInbox?: () => void;
 }
 
-export const DockNav: React.FC<DockNavProps> = ({ currentPage, onNavigate }) => {
+export const DockNav: React.FC<DockNavProps> = ({ currentPage, onNavigate, onOpenInbox }) => {
+  const { isAuthenticated, unreadCount } = useAuth();
   const items: { id: Page; label: string; icon: React.ElementType }[] = [
     { id: 'home', label: 'Overview', icon: Globe },
     { id: 'aakashavani', label: 'Aakashavani', icon: Activity },
@@ -57,6 +61,23 @@ export const DockNav: React.FC<DockNavProps> = ({ currentPage, onNavigate }) => 
             );
           })}
         </div>
+
+        {/* Authenticated Inbox Quick Trigger */}
+        {isAuthenticated && onOpenInbox && (
+          <button
+            onClick={onOpenInbox}
+            className="shrink-0 relative group flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium text-[#A19F97] hover:text-white hover:bg-[#201F1D] transition-colors cursor-pointer"
+            title="Open Institutional Inbox"
+          >
+            <div className="relative">
+              <Inbox size={14} className="text-[#87857F] group-hover:text-white" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#E5182B] rounded-full" />
+              )}
+            </div>
+            <span className="text-[11px] sm:text-xs">Inbox</span>
+          </button>
+        )}
 
         {/* Divider hairline */}
         <div className="w-[1px] h-5 bg-[#33322E] mx-0.5 sm:mx-1 shrink-0" />

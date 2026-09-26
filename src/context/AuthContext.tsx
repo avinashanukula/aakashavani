@@ -1,0 +1,439 @@
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { User, BetaRole, InboxMessage, Page } from '../types';
+import { getBetaRoleInfo } from '../data/betaRoles';
+import { supabaseService } from '../services/supabaseService';
+
+export const PROTOLOPP_LIVE_URL = 'https://protolopp-desktop-psi.vercel.app/live';
+
+export interface ToastNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'approval' | 'system' | 'alert' | 'success';
+  timestamp: string;
+}
+
+interface AuthContextType {
+  currentUser: User | null;
+  sessionToken: string | null;
+  isAuthenticated: boolean;
+  inboxMessages: InboxMessage[];
+  unreadCount: number;
+  isLoading: boolean;
+  notificationsEnabled: boolean;
+  notificationPromptOpen: boolean;
+  toastList: ToastNotification[];
+  signIn: (email: string, credential?: string) => Promise<boolean>;
+  signUp: (data: {
+    fullName: string;
+    email: string;
+    phone: string;
+    institution: string;
+    role: BetaRole;
+  }) => Promise<User>;
+  signOut: () => void;
+  updateUserRole: (newRole: BetaRole) => Promise<void>;
+  markMessageAsRead: (messageId: string) => Promise<void>;
+  markAllMessagesAsRead: () => Promise<void>;
+  deleteMessage: (messageId: string) => void;
+  sendReplyMessage: (parentMessageId: string, replyBody: string, subject?: string) => Promise<boolean>;
+  postInquiryMessage: (title: string, subject: string, body: string) => Promise<boolean>;
+  refreshMailbox: () => Promise<void>;
+  turnOnNotifications: () => Promise<boolean>;
+  dismissNotificationPrompt: () => void;
+  reopenNotificationPrompt: () => void;
+  addToast: (title: string, message: string, type?: ToastNotification['type']) => void;
+  removeToast: (id: string) => void;
+  launchLiveBeta: (onNavigate?: (page: Page) => void) => boolean;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const STORAGE_KEY_USER = 'veiron_beta_user_v2';
+const STORAGE_KEY_TOKEN = 'veiron_beta_token_v2';
+const STORAGE_KEY_NOTIFS = 'veiron_beta_notifications_enabled_v1';
+
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_USER);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to parse saved user:', e);
+    }
+    return null;
+  });
+
+  const [sessionToken, setSessionToken] = useState<string | null>(() => {
+    return localStorage.getItem(STORAGE_KEY_TOKEN) || null;
+  });
+
+  const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_NOTIFS) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [notificationPromptOpen, setNotificationPromptOpen] = useState<boolean>(false);
+  const [toastList, setToastList] = useState<ToastNotification[]>([]);
+
+  const addToast = useCallback((
+    title: string, 
+    message: string, 
+    type: ToastNotification['type'] = 'system'
+  ) => {
+    const id = 'toast_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const newToast: ToastNotification = {
+      id,
+      title,
+      message,
+      type,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setToastList(prev => [newToast, ...prev].slice(0, 4));
+
+    if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(title, { body: message, icon: '/favicon.ico' });
+      } catch (err) {
+        console.warn('Browser notification failed:', err);
+      }
+    }
+
+    setTimeout(() => {
+      removeToast(id);
+    }, 6000);
+  }, [notificationsEnabled]);
+
+  const removeToast = (id: string) => {
+    setToastList(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Sync user state and token to localStorage
+  useEffect(() => {
+    if (currentUser && sessionToken) {
+      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(currentUser));
+      localStorage.setItem(STORAGE_KEY_TOKEN, sessionToken);
+    } else if (!currentUser) {
+      localStorage.removeItem(STORAGE_KEY_USER);
+      localStorage.removeItem(STORAGE_KEY_TOKEN);
+    }
+  }, [currentUser, sessionToken]);
+
+  // Sync notifications preference to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_NOTIFS, String(notificationsEnabled));
+  }, [notificationsEnabled]);
+
+  // Prompt for notification permission on initial load if disabled
+  useEffect(() => {
+    const isEnabled = localStorage.getItem(STORAGE_KEY_NOTIFS) === 'true';
+    if (!isEnabled) {
+      const timer = setTimeout(() => {
+        setNotificationPromptOpen(true);
+      }, 700);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // Fetch messages from Supabase Edge Function
+  const refreshMailbox = useCallback(async () => {
+    if (!sessionToken) return;
+    try {
+      const { messages } = await supabaseService.fetchMailboxMessages(sessionToken);
+      setInboxMessages(messages);
+    } catch (err) {
+      console.warn('Failed to refresh mailbox from Supabase:', err);
+    }
+  }, [sessionToken]);
+
+  // Validate session and hydrate mailbox on load
+  useEffect(() => {
+    if (!sessionToken) return;
+
+    let isMounted = true;
+    const verifyAndLoad = async () => {
+      setIsLoading(true);
+      try {
+        const sessionData = await supabaseService.verifySession(sessionToken);
+        if (sessionData && isMounted) {
+          setCurrentUser(sessionData.user);
+          const { messages } = await supabaseService.fetchMailboxMessages(sessionToken);
+          if (isMounted) setInboxMessages(messages);
+        }
+      } catch (err) {
+        console.warn('Session verification fallback:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    verifyAndLoad();
+    return () => { isMounted = false; };
+  }, [sessionToken]);
+
+  const turnOnNotifications = async (): Promise<boolean> => {
+    if ('Notification' in window) {
+      try {
+        await Notification.requestPermission();
+      } catch (err) {
+        console.warn('Notification permission error:', err);
+      }
+    }
+    setNotificationsEnabled(true);
+    setNotificationPromptOpen(false);
+    addToast(
+      'Notifications Enabled',
+      'You will receive instant Supabase Edge Function approval dispatches and model events.',
+      'success'
+    );
+    return true;
+  };
+
+  const dismissNotificationPrompt = () => setNotificationPromptOpen(false);
+  const reopenNotificationPrompt = () => setNotificationPromptOpen(true);
+
+  // Sign Up / Register through Supabase Edge Function
+  const signUp = async (data: {
+    fullName: string;
+    email: string;
+    phone: string;
+    institution: string;
+    role: BetaRole;
+  }): Promise<User> => {
+    setIsLoading(true);
+    try {
+      const res = await supabaseService.registerBetaTester(data);
+      setCurrentUser(res.user);
+      setSessionToken(res.sessionToken);
+
+      // Hydrate mailbox directly from Supabase
+      const { messages } = await supabaseService.fetchMailboxMessages(res.sessionToken);
+      setInboxMessages(messages);
+
+      const roleInfo = getBetaRoleInfo(data.role);
+      addToast(
+        'Beta Tester Clearance Approved!',
+        `Provisioned as [${roleInfo.title}]. Verification stored on Supabase edge cluster.`,
+        'approval'
+      );
+
+      return res.user;
+    } catch (err: any) {
+      addToast('Registration Error', err?.message || 'Failed to register via Supabase Edge Function.', 'alert');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Sign In function via Supabase Edge Function
+  const signIn = async (email: string, credential?: string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      const res = await supabaseService.signIn(email, credential);
+      setCurrentUser(res.user);
+      setSessionToken(res.sessionToken);
+
+      // Hydrate mailbox directly from Supabase
+      const { messages } = await supabaseService.fetchMailboxMessages(res.sessionToken);
+      setInboxMessages(messages);
+
+      addToast(
+        'Session Authenticated',
+        `Welcome back, ${res.user.fullName}. Connected to Supabase edge cluster.`,
+        'success'
+      );
+      return true;
+    } catch (err: any) {
+      addToast('Sign-In Error', err?.message || 'Authentication failed.', 'alert');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const signOut = () => {
+    if (sessionToken) {
+      supabaseService.signOut(sessionToken);
+    }
+    setCurrentUser(null);
+    setSessionToken(null);
+    setInboxMessages([]);
+    localStorage.removeItem(STORAGE_KEY_USER);
+    localStorage.removeItem(STORAGE_KEY_TOKEN);
+    addToast('Signed Out', 'Disconnected from Supabase beta session.', 'alert');
+  };
+
+  const updateUserRole = async (newRole: BetaRole) => {
+    if (!sessionToken || !currentUser) return;
+    setIsLoading(true);
+    try {
+      const updatedUser = await supabaseService.switchRole(sessionToken, newRole);
+      setCurrentUser(updatedUser);
+      await refreshMailbox();
+      const roleInfo = getBetaRoleInfo(newRole);
+      addToast(
+        'Role Clearance Updated',
+        `Testing role changed to: ${roleInfo.title}. Approval notice dispatched to mailbox.`,
+        'approval'
+      );
+    } catch (err: any) {
+      addToast('Role Switch Failed', err?.message || 'Unable to update role on Supabase.', 'alert');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const markMessageAsRead = async (messageId: string) => {
+    setInboxMessages(prev => prev.map(m => m.id === messageId ? { ...m, read: true } : m));
+    if (sessionToken) {
+      try {
+        await supabaseService.markAsRead(sessionToken, messageId);
+      } catch (e) {
+        console.warn('markAsRead remote failed:', e);
+      }
+    }
+  };
+
+  const markAllMessagesAsRead = async () => {
+    setInboxMessages(prev => prev.map(m => ({ ...m, read: true })));
+    if (sessionToken) {
+      try {
+        await supabaseService.markAsRead(sessionToken, undefined, true);
+      } catch (e) {
+        console.warn('markAllMessagesAsRead remote failed:', e);
+      }
+    }
+  };
+
+  const deleteMessage = (messageId: string) => {
+    setInboxMessages(prev => prev.filter(m => m.id !== messageId));
+  };
+
+  // Reply to an email / message in the mailbox
+  const sendReplyMessage = async (parentMessageId: string, replyBody: string, subject?: string): Promise<boolean> => {
+    if (!sessionToken) return false;
+    try {
+      await supabaseService.replyMailboxMessage(sessionToken, { parentMessageId, replyBody, subject });
+      await refreshMailbox();
+      addToast('Reply Dispatched', 'Your follow-up was submitted. Committee response recorded.', 'success');
+      return true;
+    } catch (err: any) {
+      addToast('Reply Failed', err?.message || 'Could not send reply through Edge Function.', 'alert');
+      return false;
+    }
+  };
+
+  // Post a new message / inquiry into the mailbox
+  const postInquiryMessage = async (title: string, subject: string, body: string): Promise<boolean> => {
+    if (!sessionToken) return false;
+    try {
+      await supabaseService.postMailboxMessage(sessionToken, { title, subject, body, category: 'inquiry' });
+      await refreshMailbox();
+      addToast('Inquiry Submitted', 'Your inquiry has been submitted to the Institutional Access Committee.', 'success');
+      return true;
+    } catch (err: any) {
+      addToast('Failed to post message', err?.message || 'Error communicating with Supabase Edge Function.', 'alert');
+      return false;
+    }
+  };
+
+  // Launch and Redirect to Live Simulation Environment with Strict Auth & Approval Verification
+  const launchLiveBeta = (onNavigate?: (page: Page) => void): boolean => {
+    // Check 1: Authentication Requirement
+    if (!currentUser || !sessionToken) {
+      addToast(
+        'Institutional Authentication Required',
+        'You must be signed in with an approved beta tester account to access the live world model simulation.',
+        'alert'
+      );
+      if (onNavigate) {
+        onNavigate('auth');
+      }
+      return false;
+    }
+
+    // Check 2: Authorization Requirement (Must be Approved)
+    if (currentUser.approvalStatus !== 'approved') {
+      addToast(
+        'Clearance Pending',
+        'Your institutional access is awaiting compliance authorization. Access to live simulations is restricted.',
+        'alert'
+      );
+      return false;
+    }
+
+    // Check 3: Role Authorization
+    const roleInfo = getBetaRoleInfo(currentUser.role);
+    addToast(
+      'Live Clearance Verified',
+      `Launching Aakashavani Live Simulation [${currentUser.clearanceCode}] · ${roleInfo.title}...`,
+      'approval'
+    );
+
+    // Cryptographic / institutional query parameters verifying clearance
+    const secureParams = new URLSearchParams({
+      clearance: currentUser.clearanceCode,
+      role: currentUser.role,
+      tier: currentUser.testerTier || 'TIER-1 EARLY ACCESS',
+      institution: currentUser.institution || 'Institutional Research Desk',
+      auth: 'verified',
+      session: sessionToken.slice(0, 16),
+      timestamp: Date.now().toString(),
+    });
+
+    const targetUrl = `${PROTOLOPP_LIVE_URL}?${secureParams.toString()}`;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    return true;
+  };
+
+  const unreadCount = inboxMessages.filter(m => !m.read).length;
+
+  return (
+    <AuthContext.Provider
+      value={{
+        currentUser,
+        sessionToken,
+        isAuthenticated: !!currentUser,
+        inboxMessages,
+        unreadCount,
+        isLoading,
+        notificationsEnabled,
+        notificationPromptOpen,
+        toastList,
+        signIn,
+        signUp,
+        signOut,
+        updateUserRole,
+        markMessageAsRead,
+        markAllMessagesAsRead,
+        deleteMessage,
+        sendReplyMessage,
+        postInquiryMessage,
+        refreshMailbox,
+        turnOnNotifications,
+        dismissNotificationPrompt,
+        reopenNotificationPrompt,
+        addToast,
+        removeToast,
+        launchLiveBeta
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
