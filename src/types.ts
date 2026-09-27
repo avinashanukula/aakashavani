@@ -7,7 +7,8 @@ export type Page =
   | 'applications' 
   | 'about' 
   | 'contact'
-  | 'auth';
+  | 'auth'
+  | '404';
 
 export interface BetaReview {
   id: string;

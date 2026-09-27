@@ -18,6 +18,7 @@ import { ContactPage } from './pages/ContactPage';
 import { AuthPage } from './pages/AuthPage';
 import { BetaDashboardPage } from './pages/BetaDashboardPage';
 import { AdminOpsDashboardPage } from './pages/AdminOpsDashboardPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 
 function AppContent() {
   const { currentUser, addToast, launchLiveBeta } = useAuth();
@@ -25,6 +26,7 @@ function AppContent() {
 
   const getPageFromPath = (pathname: string): Page => {
     const cleanPath = pathname.toLowerCase().replace(/\/$/, '') || '/';
+    if (cleanPath === '/') return 'home';
     // Decoy protection against scanners
     if (cleanPath === '/admin' || cleanPath === '/administrator' || cleanPath === '/admin.php') {
       return 'home';
@@ -45,7 +47,8 @@ function AppContent() {
     if (cleanPath === '/about') return 'about';
     if (cleanPath === '/contact') return 'contact';
     if (cleanPath === '/auth' || cleanPath === '/signin' || cleanPath === '/signup') return 'auth';
-    return 'home';
+    if (cleanPath === '/404' || cleanPath === '/not-found') return '404';
+    return '404';
   };
 
   const getPathFromPage = (page: Page): string => {
@@ -58,6 +61,7 @@ function AppContent() {
       case 'about': return '/about';
       case 'contact': return '/contact';
       case 'auth': return '/auth';
+      case '404': return '/404';
       default: return '/';
     }
   };
@@ -72,6 +76,7 @@ function AppContent() {
       case 'about': return 'Mission & Philosophy | VEIRON';
       case 'contact': return 'Contact & Briefing | VEIRON';
       case 'auth': return 'Beta Access & Institutional Authentication | VEIRON';
+      case '404': return '404 — Recursive Manifold Collapse | VEIRON';
       default: return 'VEIRON — World Models for Institutions';
     }
   };
@@ -166,6 +171,7 @@ function AppContent() {
         {currentPage === 'about' && <AboutPage onNavigate={handleNavigate} />}
         {currentPage === 'contact' && <ContactPage onNavigate={handleNavigate} />}
         {currentPage === 'auth' && <AuthPage onNavigate={handleNavigate} />}
+        {currentPage === '404' && <NotFoundPage onNavigate={handleNavigate} />}
       </main>
 
       {/* Global Footer */}
