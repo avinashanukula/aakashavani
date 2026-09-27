@@ -47,6 +47,10 @@ class SupabaseService {
    * Register a new Beta Tester through the Edge Function middleware.
    * Hardened against account takeover.
    */
+  /**
+   * Register a new Beta Tester through the Edge Function middleware.
+   * Enforces 2-step verification and sets approval status to 'pending' (manual Supabase approval).
+   */
   async registerBetaTester(data: {
     fullName: string;
     email: string;
@@ -54,51 +58,35 @@ class SupabaseService {
     institution: string;
     role: BetaRole;
     password?: string;
-  }): Promise<{ user: User; sessionToken: string; message: string }> {
-    const res = await this.invokeMiddleware<{
-      user: {
-        id: string;
-        full_name: string;
-        email: string;
-        phone: string;
-        institution: string;
-        role: BetaRole;
-        approval_status: 'approved' | 'pending' | 'rejected';
-        clearance_code: string;
-        notifications_enabled: boolean;
-        tester_tier: string;
-        created_at: string;
-      };
-      sessionToken: string;
+  }): Promise<{ require2fa: boolean; email: string; message: string; previewCode?: string; clearanceCode?: string }> {
+    return await this.invokeMiddleware<{
+      require2fa: boolean;
+      email: string;
       message: string;
+      previewCode?: string;
+      clearanceCode?: string;
     }>('register', data);
-
-    const mappedUser: User = {
-      id: res.user.id,
-      fullName: res.user.full_name,
-      email: res.user.email,
-      phone: res.user.phone,
-      institution: res.user.institution,
-      role: res.user.role,
-      approvalStatus: res.user.approval_status as 'approved' | 'pending',
-      joinedAt: new Date(res.user.created_at).toLocaleDateString(),
-      clearanceCode: res.user.clearance_code,
-      notificationsEnabled: res.user.notifications_enabled,
-      testerTier: res.user.tester_tier,
-    };
-
-    return {
-      user: mappedUser,
-      sessionToken: res.sessionToken,
-      message: res.message,
-    };
   }
 
   /**
    * Authenticate an existing institutional tester account.
+   * Step 1: Validates credentials and dispatches 6-digit 2-step verification code.
    */
-  async signIn(email: string, credential?: string): Promise<{ user: User; sessionToken: string }> {
+  async signIn(email: string, credential?: string): Promise<{ require2fa: boolean; email: string; message: string; previewCode?: string }> {
+    return await this.invokeMiddleware<{
+      require2fa: boolean;
+      email: string;
+      message: string;
+      previewCode?: string;
+    }>('signin', { email, credential });
+  }
+
+  /**
+   * Step 2: Verify the 6-digit two-factor verification code and retrieve authenticated session token.
+   */
+  async verifyTwoFactor(email: string, code: string): Promise<{ user: User; sessionToken: string }> {
     const res = await this.invokeMiddleware<{
+      success: boolean;
       user: {
         id: string;
         full_name: string;
@@ -113,7 +101,7 @@ class SupabaseService {
         created_at: string;
       };
       sessionToken: string;
-    }>('signin', { email, credential });
+    }>('verify-2fa', { email, code });
 
     const mappedUser: User = {
       id: res.user.id,
@@ -130,6 +118,13 @@ class SupabaseService {
     };
 
     return { user: mappedUser, sessionToken: res.sessionToken };
+  }
+
+  /**
+   * Resend a fresh 6-digit two-step verification code.
+   */
+  async resendTwoFactor(email: string): Promise<{ success: boolean; message: string; previewCode?: string }> {
+    return await this.invokeMiddleware<{ success: boolean; message: string; previewCode?: string }>('resend-2fa', { email });
   }
 
   /**

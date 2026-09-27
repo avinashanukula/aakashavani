@@ -3,7 +3,7 @@ import { User, BetaRole, InboxMessage, Page } from '../types';
 import { getBetaRoleInfo } from '../data/betaRoles';
 import { supabaseService } from '../services/supabaseService';
 
-export const PROTOLOPP_LIVE_URL = 'https://protolopp-desktop-psi.vercel.app/live';
+export const PROTOLOPP_LIVE_URL = 'https://protolopp-desktop-psi.vercel.app';
 
 export interface ToastNotification {
   id: string;
@@ -31,6 +31,17 @@ interface AuthContextType {
     institution: string;
     role: BetaRole;
   }) => Promise<User>;
+  initiateSignIn: (email: string, credential?: string) => Promise<{ require2fa: boolean; email: string; message: string; previewCode?: string }>;
+  initiateSignUp: (data: {
+    fullName: string;
+    email: string;
+    phone: string;
+    institution: string;
+    role: BetaRole;
+  }) => Promise<{ require2fa: boolean; email: string; message: string; previewCode?: string; clearanceCode?: string }>;
+  verifyTwoFactor: (email: string, code: string) => Promise<User>;
+  resendTwoFactor: (email: string) => Promise<{ success: boolean; message: string; previewCode?: string }>;
+  refreshUserStatus: () => Promise<User | null>;
   signOut: () => void;
   updateUserRole: (newRole: BetaRole) => Promise<void>;
   markMessageAsRead: (messageId: string) => Promise<void>;
@@ -189,7 +200,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setNotificationPromptOpen(false);
     addToast(
       'Notifications Enabled',
-      'You will receive instant Supabase Edge Function approval dispatches and model events.',
+      'You will receive instant Supabase Edge Function clearance dispatches and model events.',
       'success'
     );
     return true;
@@ -198,7 +209,134 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const dismissNotificationPrompt = () => setNotificationPromptOpen(false);
   const reopenNotificationPrompt = () => setNotificationPromptOpen(true);
 
-  // Sign Up / Register through Supabase Edge Function
+  // Step 1: Initiate Sign Up (generates 2FA code in Supabase DB)
+  const initiateSignUp = async (data: {
+    fullName: string;
+    email: string;
+    phone: string;
+    institution: string;
+    role: BetaRole;
+  }) => {
+    setIsLoading(true);
+    try {
+      const res = await supabaseService.registerBetaTester(data);
+      addToast(
+        '2-Step Verification Dispatched',
+        `A 6-digit verification code has been dispatched to ${data.email}.`,
+        'approval'
+      );
+      return res;
+    } catch (err: any) {
+      addToast('Registration Error', err?.message || 'Failed to submit registration.', 'alert');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Step 1: Initiate Sign In (validates password, generates 2FA code in Supabase DB)
+  const initiateSignIn = async (email: string, credential?: string) => {
+    setIsLoading(true);
+    try {
+      const res = await supabaseService.signIn(email, credential);
+      addToast(
+        '2-Step Verification Dispatched',
+        `A 6-digit verification code has been dispatched to ${email}.`,
+        'system'
+      );
+      return res;
+    } catch (err: any) {
+      addToast('Sign-In Error', err?.message || 'Authentication failed.', 'alert');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Step 2: Complete Two-Factor Authentication with Supabase Edge Function
+  const verifyTwoFactor = async (email: string, code: string): Promise<User> => {
+    setIsLoading(true);
+    try {
+      const res = await supabaseService.verifyTwoFactor(email, code);
+      setCurrentUser(res.user);
+      setSessionToken(res.sessionToken);
+
+      // Hydrate mailbox directly from Supabase
+      try {
+        const { messages } = await supabaseService.fetchMailboxMessages(res.sessionToken);
+        setInboxMessages(messages);
+      } catch (e) {
+        console.warn('Mailbox fetch failed on 2FA:', e);
+      }
+
+      if (res.user.approvalStatus === 'approved') {
+        addToast(
+          'Institutional Clearance Approved',
+          `Welcome back, ${res.user.fullName}. Live simulation desk access is active.`,
+          'success'
+        );
+      } else {
+        addToast(
+          '2FA Verified · Awaiting Supabase Approval',
+          `Your identity is verified. Application is in PENDING status. The administrator will manually review and approve in Supabase.`,
+          'approval'
+        );
+      }
+
+      return res.user;
+    } catch (err: any) {
+      addToast('Verification Failed', err?.message || 'Invalid or expired 2-step verification code.', 'alert');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Resend 2FA code
+  const resendTwoFactor = async (email: string) => {
+    try {
+      const res = await supabaseService.resendTwoFactor(email);
+      addToast('Code Resent', res.message || 'Fresh 6-digit code dispatched.', 'system');
+      return res;
+    } catch (err: any) {
+      addToast('Resend Failed', err?.message || 'Could not resend verification code.', 'alert');
+      throw err;
+    }
+  };
+
+  // Check / Refresh User Clearance Status from Supabase Table
+  const refreshUserStatus = async (): Promise<User | null> => {
+    if (!sessionToken) return null;
+    setIsLoading(true);
+    try {
+      const sessionData = await supabaseService.verifySession(sessionToken);
+      if (sessionData && sessionData.user) {
+        setCurrentUser(sessionData.user);
+        if (sessionData.user.approvalStatus === 'approved') {
+          addToast(
+            'Clearance Approved by Admin',
+            'Your account has been approved in Supabase! Live simulation desk access is now unlocked.',
+            'approval'
+          );
+        } else {
+          addToast(
+            'Status: Pending Manual Approval',
+            'Your clearance remains in PENDING status. Awaiting administrator review in the Supabase Table Editor.',
+            'system'
+          );
+        }
+        return sessionData.user;
+      }
+      return null;
+    } catch (err: any) {
+      addToast('Status Refresh Failed', err?.message || 'Could not verify status with Supabase.', 'alert');
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Compatibility wrappers
   const signUp = async (data: {
     fullName: string;
     email: string;
@@ -206,56 +344,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     institution: string;
     role: BetaRole;
   }): Promise<User> => {
-    setIsLoading(true);
-    try {
-      const res = await supabaseService.registerBetaTester(data);
-      setCurrentUser(res.user);
-      setSessionToken(res.sessionToken);
-
-      // Hydrate mailbox directly from Supabase
-      const { messages } = await supabaseService.fetchMailboxMessages(res.sessionToken);
-      setInboxMessages(messages);
-
-      const roleInfo = getBetaRoleInfo(data.role);
-      addToast(
-        'Beta Tester Clearance Approved!',
-        `Provisioned as [${roleInfo.title}]. Verification stored on Supabase edge cluster.`,
-        'approval'
-      );
-
-      return res.user;
-    } catch (err: any) {
-      addToast('Registration Error', err?.message || 'Failed to register via Supabase Edge Function.', 'alert');
-      throw err;
-    } finally {
-      setIsLoading(false);
+    const init = await initiateSignUp(data);
+    if (init.previewCode) {
+      return await verifyTwoFactor(data.email, init.previewCode);
     }
+    throw new Error('2-Step verification required.');
   };
 
-  // Sign In function via Supabase Edge Function
   const signIn = async (email: string, credential?: string): Promise<boolean> => {
-    setIsLoading(true);
-    try {
-      const res = await supabaseService.signIn(email, credential);
-      setCurrentUser(res.user);
-      setSessionToken(res.sessionToken);
-
-      // Hydrate mailbox directly from Supabase
-      const { messages } = await supabaseService.fetchMailboxMessages(res.sessionToken);
-      setInboxMessages(messages);
-
-      addToast(
-        'Session Authenticated',
-        `Welcome back, ${res.user.fullName}. Connected to Supabase edge cluster.`,
-        'success'
-      );
+    const init = await initiateSignIn(email, credential);
+    if (init.previewCode) {
+      await verifyTwoFactor(email, init.previewCode);
       return true;
-    } catch (err: any) {
-      addToast('Sign-In Error', err?.message || 'Authentication failed.', 'alert');
-      throw err;
-    } finally {
-      setIsLoading(false);
     }
+    return true;
   };
 
   const signOut = () => {
@@ -279,8 +381,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await refreshMailbox();
       const roleInfo = getBetaRoleInfo(newRole);
       addToast(
-        'Role Clearance Updated',
-        `Testing role changed to: ${roleInfo.title}. Approval notice dispatched to mailbox.`,
+        'Role Application Updated',
+        `Role set to: ${roleInfo.title}. Clearance status is pending administrator review in Supabase.`,
         'approval'
       );
     } catch (err: any) {
@@ -344,13 +446,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Launch and Redirect to Live Simulation Environment with Strict Auth & Approval Verification
+  // Launch and Redirect to Live Simulation Environment with Strict Auth & Manual Approval Verification
   const launchLiveBeta = (onNavigate?: (page: Page) => void): boolean => {
     // Check 1: Authentication Requirement
     if (!currentUser || !sessionToken) {
       addToast(
         'Institutional Authentication Required',
-        'You must be signed in with an approved beta tester account to access the live world model simulation.',
+        'You must sign in and complete 2-step verification before accessing the live simulation desk.',
         'alert'
       );
       if (onNavigate) {
@@ -359,11 +461,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return false;
     }
 
-    // Check 2: Authorization Requirement (Must be Approved)
+    // Check 2: Strict Manual Supabase Approval Requirement
     if (currentUser.approvalStatus !== 'approved') {
       addToast(
-        'Clearance Pending',
-        'Your institutional access is awaiting compliance authorization. Access to live simulations is restricted.',
+        'Manual Supabase Approval Required',
+        'Access Restricted: Your application is pending manual review in Supabase by the administrator. Live simulation access remains locked until approved.',
         'alert'
       );
       return false;
@@ -388,7 +490,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       timestamp: Date.now().toString(),
     });
 
-    const targetUrl = `${PROTOLOPP_LIVE_URL}?${secureParams.toString()}`;
+    // Vercel deployment root handles SPA routing without 404
+    const targetUrl = `${PROTOLOPP_LIVE_URL}/?${secureParams.toString()}`;
     window.open(targetUrl, '_blank', 'noopener,noreferrer');
     return true;
   };
@@ -409,6 +512,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         toastList,
         signIn,
         signUp,
+        initiateSignIn,
+        initiateSignUp,
+        verifyTwoFactor,
+        resendTwoFactor,
+        refreshUserStatus,
         signOut,
         updateUserRole,
         markMessageAsRead,

@@ -16,7 +16,10 @@ import {
   CheckCircle2, 
   Flame, 
   Clock, 
-  Compass 
+  Compass,
+  RefreshCw,
+  AlertCircle,
+  Lock
 } from 'lucide-react';
 
 interface AakashavaniPageProps {
@@ -24,7 +27,17 @@ interface AakashavaniPageProps {
 }
 
 export const AakashavaniPage: React.FC<AakashavaniPageProps> = ({ onNavigate }) => {
-  const { currentUser, launchLiveBeta } = useAuth();
+  const { currentUser, launchLiveBeta, refreshUserStatus, isLoading } = useAuth();
+  const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
+
+  const handleRefreshStatus = async () => {
+    setIsRefreshingStatus(true);
+    try {
+      await refreshUserStatus();
+    } finally {
+      setIsRefreshingStatus(false);
+    }
+  };
   return (
     <div className="relative min-h-screen bg-[#FAF8F5] text-[#141413]">
       {/* Product Hero */}
@@ -140,31 +153,59 @@ export const AakashavaniPage: React.FC<AakashavaniPageProps> = ({ onNavigate }) 
             {currentUser ? (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-[#141413] text-white">
-                    <ShieldCheck size={18} className="text-[#E5182B]" />
+                  <div className={`p-2 ${currentUser.approvalStatus === 'approved' ? 'bg-[#141413] text-white' : 'bg-amber-100 text-amber-900 border border-amber-300'}`}>
+                    {currentUser.approvalStatus === 'approved' ? (
+                      <ShieldCheck size={18} className="text-[#E5182B]" />
+                    ) : (
+                      <Lock size={18} className="text-amber-700" />
+                    )}
                   </div>
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2 font-mono text-xs">
                       <span className="font-semibold text-[#141413]">AUTHORIZED BETA SESSION:</span>
-                      <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-semibold border border-emerald-300">
-                        APPROVED
-                      </span>
+                      {currentUser.approvalStatus === 'approved' ? (
+                        <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-semibold border border-emerald-300">
+                          APPROVED
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[10px] font-semibold border border-amber-300 flex items-center gap-1">
+                          <span>PENDING MANUAL SUPABASE APPROVAL</span>
+                        </span>
+                      )}
                       <span className="text-[#87857F]">· {currentUser.clearanceCode}</span>
                     </div>
                     <div className="text-xs text-[#66645E]">
-                      Auditing as <span className="font-semibold text-[#141413]">{getBetaRoleInfo(currentUser.role).title}</span> ({currentUser.institution || 'Institutional Desk'})
+                      {currentUser.approvalStatus === 'approved' ? (
+                        <>Auditing as <span className="font-semibold text-[#141413]">{getBetaRoleInfo(currentUser.role).title}</span> ({currentUser.institution || 'Institutional Desk'})</>
+                      ) : (
+                        <>Role <span className="font-semibold text-[#141413]">{getBetaRoleInfo(currentUser.role).title}</span> pending administrator review in the Supabase Table Editor. Live simulations locked.</>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <button
-                  onClick={() => launchLiveBeta(onNavigate)}
-                  className="px-5 py-2.5 bg-[#E5182B] hover:bg-[#FF2A3D] text-white text-xs font-semibold rounded-full transition-all shrink-0 cursor-pointer shadow-sm flex items-center gap-2 self-start sm:self-auto"
-                >
-                  <Activity size={14} />
-                  <span>Launch Live Simulation Desk</span>
-                  <ArrowUpRight size={13} />
-                </button>
+                <div className="flex items-center gap-2">
+                  {currentUser.approvalStatus === 'approved' ? (
+                    <button
+                      onClick={() => launchLiveBeta(onNavigate)}
+                      className="px-5 py-2.5 bg-[#E5182B] hover:bg-[#FF2A3D] text-white text-xs font-semibold rounded-full transition-all shrink-0 cursor-pointer shadow-sm flex items-center gap-2 self-start sm:self-auto"
+                    >
+                      <Activity size={14} />
+                      <span>Launch Live Simulation Desk</span>
+                      <ArrowUpRight size={13} />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleRefreshStatus}
+                      disabled={isRefreshingStatus}
+                      className="px-4 py-2 bg-[#141413] hover:bg-[#2B2A28] disabled:opacity-50 text-white text-xs font-semibold rounded-full transition-all shrink-0 cursor-pointer shadow-sm flex items-center gap-2 self-start sm:self-auto"
+                      title="Check if administrator has approved your record in Supabase Table Editor"
+                    >
+                      <RefreshCw size={13} className={isRefreshingStatus ? 'animate-spin text-[#E5182B]' : ''} />
+                      <span>{isRefreshingStatus ? 'Checking Supabase...' : 'Refresh Approval Status'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">

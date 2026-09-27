@@ -33,7 +33,8 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
     updateUserRole, 
     notificationsEnabled, 
     turnOnNotifications,
-    launchLiveBeta 
+    launchLiveBeta,
+    refreshUserStatus
   } = useAuth();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -119,9 +120,15 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
                 </div>
               </div>
 
-              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-mono font-semibold border border-emerald-300">
-                ACTIVE BETA
-              </span>
+              {currentUser.approvalStatus === 'approved' ? (
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-mono font-semibold border border-emerald-300">
+                  APPROVED
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-mono font-semibold border border-amber-300">
+                  PENDING REVIEW
+                </span>
+              )}
             </div>
 
             {/* Institutional Details */}
@@ -225,13 +232,30 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
             >
               <div className="flex items-center gap-2">
                 <Activity size={14} className="text-[#E5182B]" />
-                <span className="font-medium">Preview Beta Version Console</span>
+                <span className="font-medium">
+                  {currentUser.approvalStatus === 'approved' ? 'Preview Beta Version Console' : 'Preview Beta (Approval Required)'}
+                </span>
               </div>
               <div className="flex items-center gap-1 text-[10px] font-mono text-[#87857F]">
-                <span>LIVE</span>
+                <span>{currentUser.approvalStatus === 'approved' ? 'LIVE' : 'LOCKED'}</span>
                 <ArrowUpRight size={11} />
               </div>
             </button>
+
+            {currentUser.approvalStatus !== 'approved' && (
+              <button
+                onClick={async () => {
+                  await refreshUserStatus();
+                }}
+                className="w-full px-3 py-2 text-left text-[#141413] hover:bg-amber-50/60 rounded flex items-center justify-between transition-colors cursor-pointer border-t border-[#F0EEE6]"
+              >
+                <div className="flex items-center gap-2 text-amber-900">
+                  <RefreshCw size={13} className="text-amber-600" />
+                  <span className="font-medium text-xs">Check Supabase Approval Status</span>
+                </div>
+                <span className="text-[10px] font-mono text-amber-700">REFRESH</span>
+              </button>
+            )}
 
             <div className="px-3 py-2 flex items-center justify-between text-[#474540]">
               <div className="flex items-center gap-2">

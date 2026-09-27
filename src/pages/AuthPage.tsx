@@ -16,7 +16,10 @@ import {
   Activity, 
   Sparkles,
   Layers,
-  Check
+  Check,
+  Key,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 
 interface AuthPageProps {
@@ -28,11 +31,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   onNavigate,
   initialMode = 'signup' 
 }) => {
-  const { signIn, signUp, currentUser } = useAuth();
+  const { initiateSignIn, initiateSignUp, verifyTwoFactor, resendTwoFactor, currentUser } = useAuth();
 
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
+  const [mode, setMode] = useState<'signin' | 'signup' | '2fa'>(initialMode);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // 2-Step Verification State
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [previewCode, setPreviewCode] = useState<string | null>(null);
+  const [pendingRole, setPendingRole] = useState<BetaRole | null>(null);
 
   // Sign Up Form Fields
   const [fullName, setFullName] = useState('');
@@ -63,7 +73,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
     setIsSubmitting(true);
     try {
-      await signUp({
+      const res = await initiateSignUp({
         fullName: fullName.trim(),
         email: email.trim(),
         phone: `${phonePrefix} ${phoneNumber.trim()}`,
@@ -71,12 +81,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         role: selectedRole
       });
 
-      // Navigate to aakashavani page to preview beta version with active approval
-      setTimeout(() => {
-        onNavigate('aakashavani');
-      }, 500);
+      setPendingEmail(email.trim());
+      setPreviewCode(res.previewCode || null);
+      setPendingRole(selectedRole);
+      setTwoFactorCode('');
+      setMode('2fa');
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Failed to complete registration.');
+      setErrorMsg(err?.message || 'Failed to submit registration.');
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -97,12 +109,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
     setIsSubmitting(true);
     try {
-      await signIn(signInEmail.trim(), signInPassword.trim());
-      setTimeout(() => {
-        onNavigate('aakashavani');
-      }, 400);
+      const res = await initiateSignIn(signInEmail.trim(), signInPassword.trim());
+      setPendingEmail(signInEmail.trim());
+      setPreviewCode(res.previewCode || null);
+      setTwoFactorCode('');
+      setMode('2fa');
     } catch (err: any) {
       setErrorMsg(err?.message || 'Failed to sign in.');
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -112,10 +126,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setErrorMsg(null);
     const demoEmail = role === 'quant-researcher' ? 'a.vance@blackrock-alpha.com' : 'm.chen@citadel-fx.com';
     try {
+      let res;
       try {
-        await signIn(demoEmail, 'DEMO-CLEARANCE');
+        res = await initiateSignIn(demoEmail, 'DEMO-CLEARANCE');
       } catch {
-        await signUp({
+        res = await initiateSignUp({
           fullName: role === 'quant-researcher' ? 'Alex Vance' : 'Marcus Chen',
           email: demoEmail,
           phone: '+1 (212) 810-5300',
@@ -123,12 +138,51 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           role: role
         });
       }
+      setPendingEmail(demoEmail);
+      setPreviewCode(res.previewCode || null);
+      setTwoFactorCode(res.previewCode || '');
+      setMode('2fa');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Demo sign in failed.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleTwoFactorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+
+    if (!twoFactorCode || twoFactorCode.trim().length !== 6) {
+      setErrorMsg('Please enter the complete 6-digit verification code.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await verifyTwoFactor(pendingEmail, twoFactorCode.trim());
       setTimeout(() => {
         onNavigate('aakashavani');
       }, 400);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Demo sign in failed.');
+      setErrorMsg(err?.message || 'Invalid or expired 2-step verification code.');
       setIsSubmitting(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!pendingEmail) return;
+    setIsResending(true);
+    setErrorMsg(null);
+    try {
+      const res = await resendTwoFactor(pendingEmail);
+      if (res.previewCode) {
+        setPreviewCode(res.previewCode);
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Could not resend verification code.');
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -146,40 +200,55 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               INSTITUTIONAL ACCESS PORTAL · COHORT 01
             </div>
             <h1 className="text-3xl sm:text-5xl font-serif text-[#141413] tracking-tight">
-              {mode === 'signup' ? 'Beta Testing Registration' : 'Institutional Sign In'}
+              {mode === '2fa' 
+                ? '2-Step Security Verification' 
+                : mode === 'signup' 
+                  ? 'Beta Testing Registration' 
+                  : 'Institutional Sign In'}
             </h1>
             <p className="text-sm text-[#66645E]">
-              {mode === 'signup' 
-                ? 'Register for early access to Veiron\'s Aakashavani financial world model and receive your role approval credentials.'
-                : 'Sign in with your authorized institutional email or active clearance code.'}
+              {mode === '2fa'
+                ? 'Enter the 6-digit confirmation code generated and validated by the Supabase edge authentication cluster.'
+                : mode === 'signup' 
+                  ? 'Register for early access to Veiron\'s Aakashavani financial world model and receive your role approval credentials.'
+                  : 'Sign in with your authorized institutional email or active clearance code.'}
             </p>
           </div>
         </div>
 
         {/* Mode Switcher Tabs */}
         <div className="flex justify-center">
-          <div className="bg-[#EAE6DD] p-1 rounded-full border border-[#D5D0C5] flex items-center">
-            <button
-              onClick={() => { setMode('signup'); setErrorMsg(null); }}
-              className={`px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                mode === 'signup'
-                  ? 'bg-[#141413] text-white shadow-md'
-                  : 'text-[#66645E] hover:text-[#141413]'
-              }`}
-            >
-              Opt-In / Register for Beta
-            </button>
-            <button
-              onClick={() => { setMode('signin'); setErrorMsg(null); }}
-              className={`px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                mode === 'signin'
-                  ? 'bg-[#141413] text-white shadow-md'
-                  : 'text-[#66645E] hover:text-[#141413]'
-              }`}
-            >
-              Institutional Sign In
-            </button>
-          </div>
+          {mode === '2fa' ? (
+            <div className="bg-[#EAE6DD] p-1 rounded-full border border-[#D5D0C5] flex items-center">
+              <div className="px-5 py-2 rounded-full text-xs font-semibold bg-[#141413] text-white shadow-md flex items-center gap-2">
+                <Lock size={13} className="text-[#E5182B]" />
+                <span>Supabase 2-Step Verification</span>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-[#EAE6DD] p-1 rounded-full border border-[#D5D0C5] flex items-center">
+              <button
+                onClick={() => { setMode('signup'); setErrorMsg(null); }}
+                className={`px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                  mode === 'signup'
+                    ? 'bg-[#141413] text-white shadow-md'
+                    : 'text-[#66645E] hover:text-[#141413]'
+                }`}
+              >
+                Opt-In / Register for Beta
+              </button>
+              <button
+                onClick={() => { setMode('signin'); setErrorMsg(null); }}
+                className={`px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                  mode === 'signin'
+                    ? 'bg-[#141413] text-white shadow-md'
+                    : 'text-[#66645E] hover:text-[#141413]'
+                }`}
+              >
+                Institutional Sign In
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Error Notice */}
@@ -192,7 +261,114 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
         {/* Main Card Container */}
         <div className="max-w-2xl mx-auto bg-white border-2 border-[#141413] shadow-xl p-6 sm:p-10 space-y-8">
-          {mode === 'signup' ? (
+          {mode === '2fa' ? (
+            /* ================= 2-STEP VERIFICATION FORM ================= */
+            <form onSubmit={handleTwoFactorSubmit} className="space-y-6">
+              <div className="space-y-2 text-center pb-4 border-b border-[#F0EEE6]">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-mono font-medium">
+                  <Lock size={12} className="text-amber-600" />
+                  <span>SUPABASE TWO-FACTOR PROTOCOL (2FA)</span>
+                </div>
+                <h3 className="text-xl font-serif font-bold text-[#141413]">
+                  Enter 6-Digit Confirmation Code
+                </h3>
+                <p className="text-xs text-[#66645E]">
+                  Dispatched to institutional account: <strong className="text-[#141413] font-mono">{pendingEmail}</strong>
+                </p>
+              </div>
+
+              {/* Dispatched Code Preview Banner */}
+              {previewCode && (
+                <div className="p-4 bg-[#FAF8F5] border-2 border-[#141413] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="text-[10px] font-mono text-[#87857F] uppercase tracking-wider flex items-center gap-1">
+                      <Key size={11} className="text-[#E5182B]" />
+                      <span>SUPABASE DATABASE VERIFICATION CODE</span>
+                    </div>
+                    <div className="font-mono text-2xl font-bold tracking-widest text-[#E5182B]">
+                      {previewCode}
+                    </div>
+                    <div className="text-[10px] text-[#87857F]">
+                      (Stored in Supabase edge cluster table · Valid for 10 minutes)
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTwoFactorCode(previewCode)}
+                    className="px-3.5 py-1.5 bg-[#141413] hover:bg-[#2B2A28] text-white text-xs font-mono font-medium transition-colors cursor-pointer self-start sm:self-auto"
+                  >
+                    Auto-Fill Code
+                  </button>
+                </div>
+              )}
+
+              {/* 6-Digit PIN input */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-center text-[#141413]">
+                  6-DIGIT VERIFICATION CODE
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={twoFactorCode}
+                  onChange={(e) => setTwoFactorCode(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="------"
+                  autoFocus
+                  className="w-full text-center font-mono text-3xl tracking-[0.4em] py-3.5 bg-[#FAF8F5] border-2 border-[#141413] text-[#141413] focus:outline-none focus:ring-2 focus:ring-[#E5182B]/20"
+                />
+                <div className="flex items-center justify-between text-xs font-mono text-[#87857F] pt-1">
+                  <span>EXPIRES IN 10 MINUTES</span>
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={isResending}
+                    className="text-[#E5182B] hover:underline cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <RefreshCw size={11} className={isResending ? 'animate-spin' : ''} />
+                    <span>{isResending ? 'Resending...' : 'Resend Code'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Institutional Manual Approval Policy Notice */}
+              <div className="p-3.5 bg-[#F7F5F0] border border-[#E3E0D8] text-[11px] text-[#66645E] space-y-1">
+                <div className="font-semibold text-[#141413] flex items-center gap-1.5">
+                  <AlertCircle size={13} className="text-[#E5182B]" />
+                  <span>Institutional Clearance & Manual Approval Policy</span>
+                </div>
+                <p>
+                  Upon 2FA verification, your account is authenticated with status <strong className="font-mono text-[#141413]">PENDING</strong>. Access to live simulation desks will remain locked until manually reviewed and approved by the administrator in the Supabase Table Editor.
+                </p>
+              </div>
+
+              {/* Verify & Complete Button */}
+              <button
+                type="submit"
+                disabled={isSubmitting || twoFactorCode.trim().length !== 6}
+                className="w-full py-4 px-6 bg-[#E5182B] hover:bg-[#FF2A3D] disabled:opacity-50 text-white font-semibold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                {isSubmitting ? (
+                  <span>VERIFYING WITH SUPABASE...</span>
+                ) : (
+                  <>
+                    <ShieldCheck size={18} />
+                    <span>Verify Code & Complete Clearance</span>
+                    <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setMode('signin'); setTwoFactorCode(''); setErrorMsg(null); }}
+                  className="text-xs text-[#87857F] hover:text-[#141413] font-mono cursor-pointer"
+                >
+                  ← Cancel & Return to Sign In
+                </button>
+              </div>
+            </form>
+          ) : mode === 'signup' ? (
             /* ================= SIGN UP FORM ================= */
             <form onSubmit={handleSignUpSubmit} className="space-y-6">
               {/* Identity & Contact Section */}
@@ -307,7 +483,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     2. SELECT BETA TESTER ROLE & CLEARANCE TIER
                   </span>
                   <span className="text-[11px] font-mono text-[#E5182B] font-semibold">
-                    ROLE APPROVAL DISPATCHED ON REGISTRATION
+                    MANUAL APPROVAL IN SUPABASE REQUIRED
                   </span>
                 </div>
 
@@ -385,11 +561,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 className="w-full py-4 px-6 bg-[#E5182B] hover:bg-[#FF2A3D] disabled:opacity-50 text-white font-semibold text-sm rounded-none transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isSubmitting ? (
-                  <span>PROVISIONING CREDENTIALS...</span>
+                  <span>DISPATCHING 2FA CODE...</span>
                 ) : (
                   <>
                     <ShieldCheck size={18} />
-                    <span>Opt-In & Request Beta Tester Role Approval</span>
+                    <span>Proceed to 2-Step Verification</span>
                     <ArrowRight size={16} />
                   </>
                 )}
@@ -451,10 +627,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 className="w-full py-3.5 px-6 bg-[#141413] hover:bg-[#2B2A28] text-white font-semibold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
               >
                 {isSubmitting ? (
-                  <span>AUTHENTICATING SESSION...</span>
+                  <span>DISPATCHING 2FA CODE...</span>
                 ) : (
                   <>
-                    <span>Sign In to Beta Session</span>
+                    <span>Proceed to 2-Step Verification</span>
                     <ArrowRight size={15} />
                   </>
                 )}

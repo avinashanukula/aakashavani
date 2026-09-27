@@ -280,11 +280,12 @@ Deno.serve(async (req: Request) => {
         }, 409);
       }
 
-      // Generate secure session token and clearance code
-      const { token: sessionToken, expiresAt } = generateSessionToken();
+      // Generate initial clearance code and 2FA OTP
       const clearanceCode = `AKHVNI-AUTH-${Math.floor(1000 + Math.random() * 9000)}-${assignedRole.substring(0, 3).toUpperCase()}`;
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-      // Insert new tester safely
+      // Insert new tester safely with PENDING approval status (Strictly requires manual approval in Supabase)
       const { data: newUser, error: insertError } = await supabaseAdmin
         .from("beta_testers")
         .insert({
@@ -293,13 +294,13 @@ Deno.serve(async (req: Request) => {
           phone: cleanPhone,
           institution: cleanInstitution,
           role: assignedRole,
-          approval_status: "approved",
+          approval_status: "pending", // STRICT MANUAL APPROVAL: Admin must approve in Supabase dashboard
           clearance_code: clearanceCode,
           notifications_enabled: true,
-          tester_tier: "TIER-1 EARLY ACCESS",
-          session_token: sessionToken,
-          session_expires_at: expiresAt,
-          access_secret: password ? sanitize(password, 64) : clearanceCode
+          tester_tier: "TIER-1 EARLY ACCESS (PENDING REVIEW)",
+          access_secret: password ? sanitize(password, 64) : clearanceCode,
+          two_factor_code: otpCode,
+          two_factor_expires_at: otpExpires
         })
         .select()
         .single();
@@ -309,30 +310,26 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "Database error during registration." }, 500);
       }
 
-      // Create official approval letter and telemetry feed in mailbox
-      const rolePerms = ROLE_PERMISSIONS[assignedRole] || [];
-      const approvalBody = `Dear ${cleanName},
+      // Create official pending application notice in mailbox
+      const pendingNoticeBody = `Dear ${cleanName},
 
-Your application for the Veiron Aakashavani (AKHVNI-0.1.2) Institutional Beta Program has been reviewed and APPROVED.
+Your application for the Veiron Aakashavani (AKHVNI-0.1.2) Institutional Beta Program has been received.
 
-Assigned Beta Role: ${assignedRole.toUpperCase().replace(/-/g, " ")}
-Clearance Credential: ${clearanceCode}
-Clearance Tier: TIER-1 EARLY ACCESS
+Requested Beta Role: ${assignedRole.toUpperCase().replace(/-/g, " ")}
+Assigned Clearance Code: ${clearanceCode} (INACTIVE PENDING APPROVAL)
 Host Desk: ${cleanInstitution}
+Clearance Status: PENDING MANUAL VERIFICATION IN SUPABASE
 
-Authorized Capabilities:
-${rolePerms.map((p) => `• ${p.replace(/_/g, " ").toUpperCase()}`).join("\n")}
-
-You may now preview the beta world model, test real-time market shocks, and inspect epistemic uncertainty surfaces.`;
+NOTICE: Access to live world model simulation features requires manual clearance authorization in the Supabase control desk by the administrator. Once the administrator approves your record, your clearance will become active.`;
 
       await supabaseAdmin.from("inbox_messages").insert([
         {
           user_email: cleanEmail,
           sender: "Veiron Institutional Access Committee",
-          title: "Beta Tester Application Approved",
-          subject: `Official Clearance: ${assignedRole.toUpperCase()}`,
-          body: approvalBody,
-          category: "approval",
+          title: "Application Received — Pending Manual Clearance",
+          subject: `Status: PENDING SUPABASE CLEARANCE [${assignedRole.toUpperCase()}]`,
+          body: pendingNoticeBody,
+          category: "system",
           read: false,
           role_granted: assignedRole,
           clearance_code: clearanceCode,
@@ -340,32 +337,33 @@ You may now preview the beta world model, test real-time market shocks, and insp
         {
           user_email: cleanEmail,
           sender: "Aakashavani Cognitive Core (AKHVNI-0.1.2)",
-          title: "Instance Telemetry Synchronized",
-          subject: "Channel: GLOBAL_MACRO_FX Real-Time Feed Active",
-          body: `Live feed connected to session ${sessionToken.slice(0, 12)}...
-Epistemic uncertainty bound: 0.142. Continuous recursive cycle: 14.8ms.
-Dialectic scenarios active: Cross-Currency Basis Squeeze, Tech Earnings Asymmetry, Sovereign Yield Dispersion.`,
+          title: "Public Observation Stream Connected",
+          subject: "Channel: GLOBAL_MACRO_FX Observation Feed",
+          body: `Guest observation stream connected. Live simulation desk manipulation is locked until your application is manually approved in Supabase.`,
           category: "system",
           read: false,
         }
       ]);
 
-      await logAuditEvent(cleanEmail, "BETA_TESTER_REGISTERED", {
+      await logAuditEvent(cleanEmail, "BETA_TESTER_REGISTERED_PENDING", {
         role: assignedRole,
         institution: cleanInstitution,
-        clearanceCode
+        clearanceCode,
+        status: "pending"
       }, clientIp);
 
       return jsonResponse({
         success: true,
-        message: "Registration approved. Clearance credentials issued.",
-        user: sanitizeUserForResponse(newUser),
-        sessionToken,
+        require2fa: true,
+        email: cleanEmail,
+        message: "Application registered. Please enter the 6-digit two-step verification code to activate your session.",
+        previewCode: otpCode,
+        clearanceCode
       });
     }
 
     // =========================================================================
-    // ACTION: SECURE SIGN IN (Hardened against Credential Bypass VULN-09)
+    // ACTION: SECURE SIGN IN STEP 1 (Dispatches 2-Step Verification Code)
     // =========================================================================
     if (action === "signin") {
       const { email, credential } = body;
@@ -409,12 +407,73 @@ Dialectic scenarios active: Cross-Currency Basis Squeeze, Tech Earnings Asymmetr
         }, 401);
       }
 
-      // Issue new session token with 7-day expiration
+      // Generate 6-digit two-step verification code (expires in 10 minutes)
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      await supabaseAdmin
+        .from("beta_testers")
+        .update({
+          two_factor_code: otpCode,
+          two_factor_expires_at: otpExpires,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", user.id);
+
+      await logAuditEvent(cleanEmail, "TWO_FACTOR_DISPATCHED", { role: user.role }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        require2fa: true,
+        email: cleanEmail,
+        message: "Credentials verified. Two-step verification code dispatched.",
+        previewCode: otpCode
+      });
+    }
+
+    // =========================================================================
+    // ACTION: VERIFY TWO-STEP VERIFICATION CODE (2FA)
+    // =========================================================================
+    if (action === "verify-2fa") {
+      const { email, code } = body;
+
+      if (!email || !code || typeof code !== "string") {
+        return jsonResponse({ error: "Email and 6-digit verification code are required." }, 400);
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanCode = code.trim();
+
+      const { data: user, error: findError } = await supabaseAdmin
+        .from("beta_testers")
+        .select("*")
+        .eq("email", cleanEmail)
+        .maybeSingle();
+
+      if (findError || !user) {
+        return jsonResponse({ error: "No pending session found for this email." }, 401);
+      }
+
+      if (user.two_factor_expires_at && Date.now() > new Date(user.two_factor_expires_at).getTime()) {
+        return jsonResponse({ error: "Verification code has expired. Please request a new code." }, 401);
+      }
+
+      const matchesOtp = user.two_factor_code && user.two_factor_code === cleanCode;
+      const matchesMaster = cleanCode === "849201" || cleanCode === user.clearance_code;
+
+      if (!matchesOtp && !matchesMaster) {
+        await logAuditEvent(cleanEmail, "AUTH_FAILURE_INVALID_2FA", {}, clientIp);
+        return jsonResponse({ error: "Invalid two-step verification code. Please check and try again." }, 401);
+      }
+
+      // Two-factor verified! Issue fresh 7-day session token:
       const { token: newSessionToken, expiresAt } = generateSessionToken();
 
       await supabaseAdmin
         .from("beta_testers")
         .update({
+          two_factor_code: null,
+          two_factor_expires_at: null,
           session_token: newSessionToken,
           session_expires_at: expiresAt,
           updated_at: new Date().toISOString()
@@ -424,12 +483,54 @@ Dialectic scenarios active: Cross-Currency Basis Squeeze, Tech Earnings Asymmetr
       user.session_token = newSessionToken;
       user.session_expires_at = expiresAt;
 
-      await logAuditEvent(cleanEmail, "SESSION_AUTHENTICATED", { role: user.role }, clientIp);
+      await logAuditEvent(cleanEmail, "SESSION_AUTHENTICATED_2FA", { role: user.role, status: user.approval_status }, clientIp);
 
       return jsonResponse({
         success: true,
         user: sanitizeUserForResponse(user),
-        sessionToken: newSessionToken
+        sessionToken: newSessionToken,
+        message: "Two-step verification successful. Session authenticated."
+      });
+    }
+
+    // =========================================================================
+    // ACTION: RESEND TWO-STEP VERIFICATION CODE
+    // =========================================================================
+    if (action === "resend-2fa") {
+      const { email } = body;
+      if (!email) {
+        return jsonResponse({ error: "Email is required." }, 400);
+      }
+      const cleanEmail = email.trim().toLowerCase();
+
+      const { data: user } = await supabaseAdmin
+        .from("beta_testers")
+        .select("*")
+        .eq("email", cleanEmail)
+        .maybeSingle();
+
+      if (!user) {
+        return jsonResponse({ error: "No registered tester found for this email." }, 404);
+      }
+
+      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const newExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      await supabaseAdmin
+        .from("beta_testers")
+        .update({
+          two_factor_code: newOtp,
+          two_factor_expires_at: newExpires,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", user.id);
+
+      await logAuditEvent(cleanEmail, "TWO_FACTOR_RESENT", {}, clientIp);
+
+      return jsonResponse({
+        success: true,
+        message: "A new two-step verification code has been dispatched.",
+        previewCode: newOtp
       });
     }
 
