@@ -469,6 +469,16 @@ NOTICE: Access to live world model simulation features requires manual clearance
         role: assignedRole
       });
 
+      // Dispatch Supabase Auth native OTP email (handles Confirm sign up / Magic link & OTP)
+      try {
+        await supabaseAdmin.auth.signInWithOtp({
+          email: cleanEmail,
+          options: { shouldCreateUser: true }
+        });
+      } catch (authErr) {
+        console.warn("Supabase Auth OTP dispatch notice:", authErr);
+      }
+
       return jsonResponse({
         success: true,
         require2fa: true,
@@ -548,6 +558,16 @@ NOTICE: Access to live world model simulation features requires manual clearance
         role: user.role
       });
 
+      // Dispatch Supabase Auth native OTP email
+      try {
+        await supabaseAdmin.auth.signInWithOtp({
+          email: cleanEmail,
+          options: { shouldCreateUser: false }
+        });
+      } catch (authErr) {
+        console.warn("Supabase Auth OTP dispatch notice:", authErr);
+      }
+
       return jsonResponse({
         success: true,
         require2fa: true,
@@ -583,10 +603,25 @@ NOTICE: Access to live world model simulation features requires manual clearance
         return jsonResponse({ error: "Verification code has expired. Please request a new code." }, 401);
       }
 
+      // Check if code matches Supabase Auth OTP
+      let isVerifiedViaSupabaseAuth = false;
+      try {
+        const { data: authData, error: authErr } = await supabaseAdmin.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanCode,
+          type: 'email'
+        });
+        if (!authErr && authData?.user) {
+          isVerifiedViaSupabaseAuth = true;
+        }
+      } catch (e) {
+        console.warn("Supabase Auth OTP verify notice:", e);
+      }
+
       const matchesOtp = user.two_factor_code && user.two_factor_code === cleanCode;
       const matchesMaster = cleanCode === "849201" || cleanCode === user.clearance_code;
 
-      if (!matchesOtp && !matchesMaster) {
+      if (!isVerifiedViaSupabaseAuth && !matchesOtp && !matchesMaster) {
         await logAuditEvent(cleanEmail, "AUTH_FAILURE_INVALID_2FA", {}, clientIp);
         return jsonResponse({ error: "Invalid two-step verification code. Please check and try again." }, 401);
       }
@@ -661,6 +696,16 @@ NOTICE: Access to live world model simulation features requires manual clearance
         approvalStatus: user.approval_status,
         role: user.role
       });
+
+      // Dispatch Supabase Auth native OTP email
+      try {
+        await supabaseAdmin.auth.signInWithOtp({
+          email: cleanEmail,
+          options: { shouldCreateUser: false }
+        });
+      } catch (authErr) {
+        console.warn("Supabase Auth OTP dispatch notice:", authErr);
+      }
 
       return jsonResponse({
         success: true,
