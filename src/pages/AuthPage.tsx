@@ -41,7 +41,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   // 2-Step Verification State
   const [pendingEmail, setPendingEmail] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
-  const [previewCode, setPreviewCode] = useState<string | null>(null);
   const [pendingRole, setPendingRole] = useState<BetaRole | null>(null);
 
   // Sign Up Form Fields
@@ -82,7 +81,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       });
 
       setPendingEmail(email.trim());
-      setPreviewCode(res.previewCode || null);
       setPendingRole(selectedRole);
       setTwoFactorCode('');
       setMode('2fa');
@@ -109,9 +107,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
     setIsSubmitting(true);
     try {
-      const res = await initiateSignIn(signInEmail.trim(), signInPassword.trim());
+      await initiateSignIn(signInEmail.trim(), signInPassword.trim());
       setPendingEmail(signInEmail.trim());
-      setPreviewCode(res.previewCode || null);
       setTwoFactorCode('');
       setMode('2fa');
     } catch (err: any) {
@@ -126,11 +123,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setErrorMsg(null);
     const demoEmail = role === 'quant-researcher' ? 'a.vance@blackrock-alpha.com' : 'm.chen@citadel-fx.com';
     try {
-      let res;
       try {
-        res = await initiateSignIn(demoEmail, 'DEMO-CLEARANCE');
+        await initiateSignIn(demoEmail, 'DEMO-CLEARANCE');
       } catch {
-        res = await initiateSignUp({
+        await initiateSignUp({
           fullName: role === 'quant-researcher' ? 'Alex Vance' : 'Marcus Chen',
           email: demoEmail,
           phone: '+1 (212) 810-5300',
@@ -139,8 +135,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         });
       }
       setPendingEmail(demoEmail);
-      setPreviewCode(res.previewCode || null);
-      setTwoFactorCode(res.previewCode || '');
+      setTwoFactorCode('');
       setMode('2fa');
     } catch (err: any) {
       setErrorMsg(err?.message || 'Demo sign in failed.');
@@ -175,10 +170,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setIsResending(true);
     setErrorMsg(null);
     try {
-      const res = await resendTwoFactor(pendingEmail);
-      if (res.previewCode) {
-        setPreviewCode(res.previewCode);
-      }
+      await resendTwoFactor(pendingEmail);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Could not resend verification code.');
     } finally {
@@ -277,30 +269,21 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 </p>
               </div>
 
-              {/* Dispatched Code Preview Banner */}
-              {previewCode && (
-                <div className="p-4 bg-[#FAF8F5] border-2 border-[#141413] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <div className="text-[10px] font-mono text-[#87857F] uppercase tracking-wider flex items-center gap-1">
-                      <Key size={11} className="text-[#E5182B]" />
-                      <span>SUPABASE DATABASE VERIFICATION CODE</span>
-                    </div>
-                    <div className="font-mono text-2xl font-bold tracking-widest text-[#E5182B]">
-                      {previewCode}
-                    </div>
-                    <div className="text-[10px] text-[#87857F]">
-                      (Stored in Supabase edge cluster table · Valid for 10 minutes)
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setTwoFactorCode(previewCode)}
-                    className="px-3.5 py-1.5 bg-[#141413] hover:bg-[#2B2A28] text-white text-xs font-mono font-medium transition-colors cursor-pointer self-start sm:self-auto"
-                  >
-                    Auto-Fill Code
-                  </button>
+              {/* Dispatched Code Notice */}
+              <div className="p-4 bg-emerald-50/70 border border-emerald-300 rounded-sm flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                  <Mail size={16} />
                 </div>
-              )}
+                <div className="space-y-1">
+                  <div className="text-xs font-semibold text-emerald-950 flex items-center gap-1.5">
+                    <span>Confirmation Code Dispatched to Email</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  </div>
+                  <p className="text-[12px] text-emerald-800 leading-relaxed">
+                    A secure 6-digit confirmation code has been emailed to <strong className="text-emerald-950 font-mono">{pendingEmail}</strong>. Please check your Gmail or institutional inbox (including Spam/Updates) and enter the code below.
+                  </p>
+                </div>
+              </div>
 
               {/* 6-Digit PIN input */}
               <div className="space-y-2">

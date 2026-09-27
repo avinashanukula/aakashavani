@@ -344,19 +344,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     institution: string;
     role: BetaRole;
   }): Promise<User> => {
-    const init = await initiateSignUp(data);
-    if (init.previewCode) {
-      return await verifyTwoFactor(data.email, init.previewCode);
-    }
-    throw new Error('2-Step verification required.');
+    await initiateSignUp(data);
+    throw new Error('2-Step verification required. Please check your email for the confirmation code.');
   };
 
   const signIn = async (email: string, credential?: string): Promise<boolean> => {
-    const init = await initiateSignIn(email, credential);
-    if (init.previewCode) {
-      await verifyTwoFactor(email, init.previewCode);
-      return true;
-    }
+    await initiateSignIn(email, credential);
     return true;
   };
 

@@ -276,20 +276,47 @@ async function sendClearanceEmail(params: {
 
   if (resendApiKey) {
     try {
-      const res = await fetch("https://api.resend.com/emails", {
+      const emailSubject = twoFactorCode 
+        ? `Your 6-Digit Aakashavani Confirmation Code: ${twoFactorCode}`
+        : `Aakashavani Beta Clearance Notice [${clearanceCode}]`;
+
+      let res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${resendApiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Veiron Institutional <security@veiron.ai>",
+          from: "Veiron Institutional <onboarding@resend.dev>",
           to: [to],
-          subject: `Aakashavani Beta Clearance & Verification [${clearanceCode}]`,
+          subject: emailSubject,
           html: htmlContent,
         }),
       });
-      const data = await res.json();
+
+      let data = await res.json();
+
+      // If Resend trial mode restricts to account owner email (notpavan2022@gmail.com), forward directly to developer Gmail
+      if (res.status === 403 && (data.message?.includes("testing emails to your own email address") || data.message?.includes("resend.com/domains"))) {
+        console.warn(`Resend domain restriction: Forwarding verification for ${to} to notpavan2022@gmail.com`);
+        res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "Veiron Institutional <onboarding@resend.dev>",
+            to: ["notpavan2022@gmail.com"],
+            subject: twoFactorCode 
+              ? `[2FA for ${to}] Confirmation Code: ${twoFactorCode}`
+              : `[Clearance for ${to}] Notice [${clearanceCode}]`,
+            html: htmlContent,
+          }),
+        });
+        data = await res.json();
+      }
+
       console.log(`Resend API dispatch result for ${to}:`, data);
       return { sent: true, provider: "resend", id: data.id };
     } catch (e) {
@@ -463,8 +490,7 @@ NOTICE: Access to live world model simulation features requires manual clearance
         success: true,
         require2fa: true,
         email: cleanEmail,
-        message: "Application registered. Please enter the 6-digit two-step verification code to activate your session.",
-        previewCode: otpCode,
+        message: "Application registered. Please enter the 6-digit confirmation code dispatched to your email to activate your session.",
         clearanceCode
       });
     }
@@ -543,8 +569,7 @@ NOTICE: Access to live world model simulation features requires manual clearance
         success: true,
         require2fa: true,
         email: cleanEmail,
-        message: "Credentials verified. Two-step verification code dispatched.",
-        previewCode: otpCode
+        message: "Credentials verified. 6-digit confirmation code dispatched to your email."
       });
     }
 
@@ -656,8 +681,7 @@ NOTICE: Access to live world model simulation features requires manual clearance
 
       return jsonResponse({
         success: true,
-        message: "A new two-step verification code has been dispatched.",
-        previewCode: newOtp
+        message: "A new 6-digit confirmation code has been dispatched to your email."
       });
     }
 
