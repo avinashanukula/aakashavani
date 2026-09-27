@@ -1,11 +1,42 @@
 export type Page = 
   | 'home' 
   | 'aakashavani' 
+  | 'beta-dashboard'
+  | 'admin-ops'
   | 'approach' 
   | 'applications' 
   | 'about' 
   | 'contact'
   | 'auth';
+
+export interface BetaReview {
+  id: string;
+  tester_id?: string;
+  tester_name: string;
+  tester_email: string;
+  tester_institution?: string;
+  tester_role: string;
+  rating: number;
+  category: 'world-model' | 'adaptation' | 'latency' | 'ui' | 'bug' | string;
+  title: string;
+  commentary: string;
+  tested_scenario?: string;
+  created_at: string;
+}
+
+export interface AdminUserRecord {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  institution: string;
+  role: BetaRole;
+  approval_status: 'approved' | 'pending' | 'rejected';
+  clearance_code: string;
+  tester_tier: string;
+  created_at: string;
+  two_factor_expires_at?: string;
+}
 
 export type BetaRole = 
   | 'quant-researcher'

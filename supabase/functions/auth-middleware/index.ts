@@ -205,6 +205,103 @@ function sanitizeUserForResponse(user: any): Record<string, unknown> | null {
   return safe;
 }
 
+const ADMIN_PASSKEY = Deno.env.get("ADMIN_PASSKEY") || "VEIRON-ALPHA-ROOT-2026";
+
+async function sendClearanceEmail(params: {
+  to: string;
+  fullName: string;
+  clearanceCode: string;
+  twoFactorCode?: string;
+  approvalStatus: string;
+  role: string;
+}) {
+  const { to, fullName, clearanceCode, twoFactorCode, approvalStatus, role } = params;
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+
+  const htmlContent = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #FAF8F5; color: #141413; padding: 24px; margin: 0; }
+      .card { max-width: 580px; margin: 0 auto; background: #ffffff; border: 2px solid #141413; padding: 32px; }
+      .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 8px; background: #FAF8F5; border: 1px solid #E3E0D8; text-transform: uppercase; letter-spacing: 0.05em; }
+      .code-box { background: #FAF8F5; border: 1px solid #141413; padding: 16px; margin: 20px 0; text-align: center; }
+      .code-title { font-size: 11px; color: #87857F; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+      .code-val { font-family: monospace; font-size: 24px; font-weight: bold; color: #E5182B; letter-spacing: 0.2em; }
+      .info-row { font-size: 13px; border-bottom: 1px solid #F0EEE6; padding: 8px 0; display: flex; justify-content: space-between; }
+      .status-pill { font-weight: bold; color: ${approvalStatus === 'approved' ? '#065F46' : '#92400E'}; }
+      .footer { font-size: 11px; color: #87857F; margin-top: 24px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div style="margin-bottom: 16px;">
+        <span class="badge" style="color: #E5182B;">VEIRON · AAKASHAVANI BETA CLEARANCE</span>
+      </div>
+      <h2 style="margin: 0 0 12px 0; font-size: 22px;">Institutional Access Credentials</h2>
+      <p style="font-size: 14px; line-height: 1.5; color: #474540;">
+        Dear ${fullName},<br><br>
+        Your credentials and 2-step verification code for the <strong>Aakashavani (AKHVNI-0.1.2)</strong> World Model beta program are detailed below.
+      </p>
+
+      ${twoFactorCode ? `
+      <div class="code-box">
+        <div class="code-title">2-STEP VERIFICATION CODE (10 MIN EXPIRY)</div>
+        <div class="code-val">${twoFactorCode}</div>
+      </div>
+      ` : ''}
+
+      <div style="margin: 20px 0;">
+        <div class="info-row"><span>CLEARANCE CODE:</span> <strong><code>${clearanceCode}</code></strong></div>
+        <div class="info-row"><span>ASSIGNED ROLE:</span> <strong>${role.toUpperCase()}</strong></div>
+        <div class="info-row"><span>CLEARANCE STATUS:</span> <span class="status-pill">${approvalStatus.toUpperCase()}</span></div>
+      </div>
+
+      <p style="font-size: 12px; color: #66645E; line-height: 1.5;">
+        ${approvalStatus === 'approved' 
+          ? 'Your institutional clearance is active. You may access live simulation workspaces.' 
+          : 'Your account is currently in PENDING status. Access to live simulations will unlock once manually approved in Supabase by the administrator.'}
+      </p>
+
+      <div class="footer">
+        VEIRON RECURSIVE ARCHITECTURE · SECURITY TIERS NIST/ISO 27001<br>
+        This email was dispatched by the Supabase Edge Cluster.
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+
+  if (resendApiKey) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "Veiron Institutional <security@veiron.ai>",
+          to: [to],
+          subject: `Aakashavani Beta Clearance & Verification [${clearanceCode}]`,
+          html: htmlContent,
+        }),
+      });
+      const data = await res.json();
+      console.log(`Resend API dispatch result for ${to}:`, data);
+      return { sent: true, provider: "resend", id: data.id };
+    } catch (e) {
+      console.warn("Resend API dispatch failed:", e);
+    }
+  } else {
+    console.log(`[SIMULATED DISPATCH] Clearance email prepared for ${to}. Clearance: ${clearanceCode}, 2FA: ${twoFactorCode}`);
+  }
+
+  return { sent: false, note: "Dispatched to database mailbox and logged" };
+}
+
 // Main Edge Function Handler
 Deno.serve(async (req: Request) => {
   // 1. CORS Preflight
@@ -352,6 +449,16 @@ NOTICE: Access to live world model simulation features requires manual clearance
         status: "pending"
       }, clientIp);
 
+      // Dispatch clearance credentials and 2FA code via email
+      await sendClearanceEmail({
+        to: cleanEmail,
+        fullName: cleanName,
+        clearanceCode,
+        twoFactorCode: otpCode,
+        approvalStatus: "pending",
+        role: assignedRole
+      });
+
       return jsonResponse({
         success: true,
         require2fa: true,
@@ -421,6 +528,16 @@ NOTICE: Access to live world model simulation features requires manual clearance
         .eq("id", user.id);
 
       await logAuditEvent(cleanEmail, "TWO_FACTOR_DISPATCHED", { role: user.role }, clientIp);
+
+      // Dispatch 2-step verification code & clearance code via email
+      await sendClearanceEmail({
+        to: cleanEmail,
+        fullName: user.full_name,
+        clearanceCode: user.clearance_code,
+        twoFactorCode: otpCode,
+        approvalStatus: user.approval_status,
+        role: user.role
+      });
 
       return jsonResponse({
         success: true,
@@ -526,6 +643,16 @@ NOTICE: Access to live world model simulation features requires manual clearance
         .eq("id", user.id);
 
       await logAuditEvent(cleanEmail, "TWO_FACTOR_RESENT", {}, clientIp);
+
+      // Dispatch fresh code via email
+      await sendClearanceEmail({
+        to: cleanEmail,
+        fullName: user.full_name,
+        clearanceCode: user.clearance_code,
+        twoFactorCode: newOtp,
+        approvalStatus: user.approval_status,
+        role: user.role
+      });
 
       return jsonResponse({
         success: true,
@@ -914,6 +1041,268 @@ ${rolePerms.map((p) => `• ${p.replace(/_/g, " ").toUpperCase()}`).join("\n")}`
         success: true,
         user: sanitizeUserForResponse(updatedUser),
         message: `Role switched to ${newRole}. Clearance updated.`,
+      });
+    }
+
+    // =========================================================================
+    // ACTION: SUBMIT BETA REVIEW / EVALUATION (Continuous Tester Feedback)
+    // =========================================================================
+    if (action === "submit-review") {
+      const auth = await authenticateRequest(req);
+      if (!auth.authenticated || !auth.user) {
+        return jsonResponse({ error: "Authenticated session required to submit review." }, 401);
+      }
+
+      const { rating, category, title, commentary, testedScenario } = body;
+      const numRating = Number(rating);
+      if (isNaN(numRating) || numRating < 1 || numRating > 5) {
+        return jsonResponse({ error: "Rating must be an integer between 1 and 5." }, 400);
+      }
+
+      if (!commentary || typeof commentary !== "string" || commentary.trim().length < 5) {
+        return jsonResponse({ error: "Detailed commentary is required (minimum 5 characters)." }, 400);
+      }
+
+      const cleanCategory = sanitize(category || "world-model", 40);
+      const cleanTitle = sanitize(title || "Beta Model Evaluation", 120);
+      const cleanCommentary = sanitize(commentary, 3000);
+      const cleanScenario = testedScenario ? sanitize(testedScenario, 120) : null;
+
+      const { data: newReview, error: revErr } = await supabaseAdmin
+        .from("beta_reviews")
+        .insert({
+          tester_id: auth.user.id,
+          tester_name: auth.user.full_name,
+          tester_email: auth.user.email,
+          tester_institution: auth.user.institution,
+          tester_role: auth.user.role,
+          rating: numRating,
+          category: cleanCategory,
+          title: cleanTitle,
+          commentary: cleanCommentary,
+          tested_scenario: cleanScenario,
+        })
+        .select()
+        .single();
+
+      if (revErr) {
+        console.error("Database error inserting review:", revErr);
+        return jsonResponse({ error: "Failed to store evaluation in database." }, 500);
+      }
+
+      await logAuditEvent(auth.user.email, "BETA_REVIEW_SUBMITTED", {
+        rating: numRating,
+        category: cleanCategory,
+        title: cleanTitle
+      }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        message: "Your evaluation has been successfully recorded in the Veiron research database.",
+        review: newReview,
+      });
+    }
+
+    // =========================================================================
+    // ACTION: LIST BETA REVIEWS
+    // =========================================================================
+    if (action === "list-reviews") {
+      const { testerEmail } = body;
+      let query = supabaseAdmin
+        .from("beta_reviews")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (testerEmail) {
+        query = query.eq("tester_email", testerEmail.trim().toLowerCase());
+      }
+
+      const { data: reviews, error: listErr } = await query;
+      if (listErr) {
+        console.error("List reviews error:", listErr);
+        return jsonResponse({ error: "Failed to fetch evaluations." }, 500);
+      }
+
+      return jsonResponse({
+        success: true,
+        reviews: reviews || []
+      });
+    }
+
+    // =========================================================================
+    // ACTION: ADMIN - LIST ALL REGISTERED USERS & STATUSES
+    // =========================================================================
+    if (action === "admin-list-users") {
+      const { adminKey } = body;
+      if (adminKey !== ADMIN_PASSKEY) {
+        const auth = await authenticateRequest(req);
+        if (!auth.authenticated || auth.user?.role !== "compliance-officer") {
+          return jsonResponse({ error: "Unauthorized administrative access." }, 403);
+        }
+      }
+
+      const { data: users, error: usersErr } = await supabaseAdmin
+        .from("beta_testers")
+        .select("id, full_name, email, phone, institution, role, approval_status, clearance_code, tester_tier, created_at, two_factor_expires_at")
+        .order("created_at", { ascending: false });
+
+      if (usersErr) {
+        return jsonResponse({ error: "Failed to fetch registered testers." }, 500);
+      }
+
+      return jsonResponse({
+        success: true,
+        users: users || []
+      });
+    }
+
+    // =========================================================================
+    // ACTION: ADMIN - UPDATE TESTER APPROVAL STATUS (Approve / Reject)
+    // =========================================================================
+    if (action === "admin-update-user-status") {
+      const { adminKey, userId, newStatus } = body;
+      if (adminKey !== ADMIN_PASSKEY) {
+        const auth = await authenticateRequest(req);
+        if (!auth.authenticated || auth.user?.role !== "compliance-officer") {
+          return jsonResponse({ error: "Unauthorized administrative access." }, 403);
+        }
+      }
+
+      if (!userId || !["approved", "pending", "rejected"].includes(newStatus)) {
+        return jsonResponse({ error: "Valid userId and newStatus ('approved'|'pending'|'rejected') are required." }, 400);
+      }
+
+      const { data: updatedUser, error: updateErr } = await supabaseAdmin
+        .from("beta_testers")
+        .update({
+          approval_status: newStatus,
+          tester_tier: newStatus === "approved" ? "TIER-1 EARLY ACCESS (VERIFIED)" : "TIER-1 EARLY ACCESS (PENDING REVIEW)",
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", userId)
+        .select()
+        .single();
+
+      if (updateErr || !updatedUser) {
+        return jsonResponse({ error: "Failed to update user approval status." }, 500);
+      }
+
+      // If approved, create official approval letter in mailbox and email the user
+      if (newStatus === "approved") {
+        await supabaseAdmin.from("inbox_messages").insert({
+          user_email: updatedUser.email,
+          sender: "Veiron Institutional Access Committee",
+          title: "Clearance Granted — Live Simulation Desk Unlocked",
+          subject: `CLEARANCE APPROVED: ${updatedUser.clearance_code}`,
+          body: `Dear ${updatedUser.full_name},
+
+Your institutional application has been reviewed and APPROVED by the administrator.
+
+Clearance Credential: ${updatedUser.clearance_code}
+Active Role: ${updatedUser.role.toUpperCase()}
+Access Level: FULL LIVE SIMULATION ACCESS UNLOCKED
+
+You may now access live recursive world model simulations directly from the Beta Testing Dashboard.`,
+          category: "approval",
+          role_granted: updatedUser.role,
+          clearance_code: updatedUser.clearance_code,
+          read: false,
+        });
+
+        // Outbound email notification
+        await sendClearanceEmail({
+          to: updatedUser.email,
+          fullName: updatedUser.full_name,
+          clearanceCode: updatedUser.clearance_code,
+          approvalStatus: "approved",
+          role: updatedUser.role
+        });
+      }
+
+      await logAuditEvent(updatedUser.email, "ADMIN_STATUS_UPDATED", {
+        newStatus,
+        userId
+      }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        message: `Tester status updated to '${newStatus}'.`,
+        user: sanitizeUserForResponse(updatedUser)
+      });
+    }
+
+    // =========================================================================
+    // ACTION: ADMIN - LIST ALL INQUIRIES & MESSAGES ACROSS USERS
+    // =========================================================================
+    if (action === "admin-list-messages") {
+      const { adminKey } = body;
+      if (adminKey !== ADMIN_PASSKEY) {
+        const auth = await authenticateRequest(req);
+        if (!auth.authenticated || auth.user?.role !== "compliance-officer") {
+          return jsonResponse({ error: "Unauthorized administrative access." }, 403);
+        }
+      }
+
+      const { data: messages, error: msgErr } = await supabaseAdmin
+        .from("inbox_messages")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (msgErr) {
+        return jsonResponse({ error: "Failed to fetch mailbox messages." }, 500);
+      }
+
+      return jsonResponse({
+        success: true,
+        messages: messages || []
+      });
+    }
+
+    // =========================================================================
+    // ACTION: ADMIN - REPLY TO TESTER MESSAGE
+    // =========================================================================
+    if (action === "admin-reply-message") {
+      const { adminKey, userEmail, parentMessageId, replyBody, subject } = body;
+      if (adminKey !== ADMIN_PASSKEY) {
+        const auth = await authenticateRequest(req);
+        if (!auth.authenticated || auth.user?.role !== "compliance-officer") {
+          return jsonResponse({ error: "Unauthorized administrative access." }, 403);
+        }
+      }
+
+      if (!userEmail || !replyBody || typeof replyBody !== "string") {
+        return jsonResponse({ error: "userEmail and replyBody are required." }, 400);
+      }
+
+      const cleanEmail = userEmail.trim().toLowerCase();
+      const cleanReply = sanitize(replyBody, 4000);
+      const cleanSubject = sanitize(subject || "Response from Institutional Committee", 120);
+
+      const { data: newMsg, error: insertErr } = await supabaseAdmin
+        .from("inbox_messages")
+        .insert({
+          user_email: cleanEmail,
+          sender: "Veiron Institutional Administration",
+          title: "Administrative Committee Response",
+          subject: cleanSubject,
+          body: cleanReply,
+          category: "system",
+          parent_id: parentMessageId || null,
+          read: false
+        })
+        .select()
+        .single();
+
+      if (insertErr) {
+        return jsonResponse({ error: "Failed to dispatch reply message." }, 500);
+      }
+
+      await logAuditEvent(cleanEmail, "ADMIN_REPLY_DISPATCHED", { parentMessageId }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        message: `Reply successfully dispatched to ${cleanEmail}.`,
+        messageRecord: newMsg
       });
     }
 

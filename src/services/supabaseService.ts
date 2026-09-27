@@ -1,4 +1,4 @@
-import { User, BetaRole, InboxMessage } from '../types';
+import { User, BetaRole, InboxMessage, BetaReview, AdminUserRecord } from '../types';
 
 const SUPABASE_URL = 
   import.meta.env.VITE_SUPABASE_URL || 'https://slfllzppphyhkpsjmupp.supabase.co';
@@ -306,6 +306,79 @@ class SupabaseService {
     approval: { targetEmail: string; approvedRole: string; customNote?: string }
   ): Promise<{ success: boolean; message: string }> {
     return await this.invokeMiddleware<{ success: boolean; message: string }>('approve-request', approval, sessionToken);
+  }
+
+  /**
+   * Submit continuous feedback and reviews for Aakashavani beta testing.
+   */
+  async submitBetaReview(
+    sessionToken: string,
+    review: { rating: number; category: string; title: string; commentary: string; testedScenario?: string }
+  ): Promise<{ success: boolean; message: string; review: BetaReview }> {
+    return await this.invokeMiddleware<{ success: boolean; message: string; review: BetaReview }>('submit-review', review, sessionToken);
+  }
+
+  /**
+   * Fetch beta reviews (optionally filtered by tester email).
+   */
+  async fetchBetaReviews(testerEmail?: string): Promise<BetaReview[]> {
+    const res = await this.invokeMiddleware<{ success: boolean; reviews: BetaReview[] }>('list-reviews', { testerEmail });
+    return res.reviews || [];
+  }
+
+  /**
+   * Admin: List all registered beta testers and statuses.
+   */
+  async adminFetchUsers(adminKey: string): Promise<AdminUserRecord[]> {
+    const res = await this.invokeMiddleware<{ success: boolean; users: AdminUserRecord[] }>('admin-list-users', { adminKey });
+    return res.users || [];
+  }
+
+  /**
+   * Admin: 1-click update user approval status ('approved' | 'pending' | 'rejected').
+   */
+  async adminUpdateUserStatus(
+    adminKey: string,
+    userId: string,
+    newStatus: 'approved' | 'pending' | 'rejected'
+  ): Promise<{ success: boolean; message: string; user: any }> {
+    return await this.invokeMiddleware<{ success: boolean; message: string; user: any }>('admin-update-user-status', {
+      adminKey,
+      userId,
+      newStatus
+    });
+  }
+
+  /**
+   * Admin: List all inquiries and mailbox dispatches.
+   */
+  async adminFetchMessages(adminKey: string): Promise<InboxMessage[]> {
+    const res = await this.invokeMiddleware<{ success: boolean; messages: any[] }>('admin-list-messages', { adminKey });
+    return (res.messages || []).map((m: any) => ({
+      id: m.id,
+      sender: m.sender || 'Institutional Desk',
+      title: m.title || 'Inquiry',
+      subject: m.subject || 'Message',
+      body: m.body,
+      timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      read: m.read || false,
+      category: m.category || 'inquiry',
+      roleGranted: m.role_granted,
+      clearanceCode: m.clearance_code
+    }));
+  }
+
+  /**
+   * Admin: Dispatch official administrative reply to a tester.
+   */
+  async adminReplyMessage(
+    adminKey: string,
+    reply: { userEmail: string; parentMessageId?: string; replyBody: string; subject?: string }
+  ): Promise<{ success: boolean; message: string }> {
+    return await this.invokeMiddleware<{ success: boolean; message: string }>('admin-reply-message', {
+      adminKey,
+      ...reply
+    });
   }
 }
 

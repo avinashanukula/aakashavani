@@ -212,6 +212,20 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
             <button
               onClick={() => {
                 setIsOpen(false);
+                onNavigate('beta-dashboard');
+              }}
+              className="w-full px-3 py-2 text-left text-[#141413] hover:bg-[#FAF8F5] rounded flex items-center justify-between transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={14} className="text-[#E5182B]" />
+                <span className="font-medium">Beta Testing Workspace</span>
+              </div>
+              <span className="text-[10px] font-mono text-[#87857F]">HUB</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsOpen(false);
                 onOpenInbox();
               }}
               className="w-full px-3 py-2 text-left text-[#141413] hover:bg-[#FAF8F5] rounded flex items-center justify-between transition-colors cursor-pointer"

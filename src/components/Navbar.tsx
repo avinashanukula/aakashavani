@@ -55,6 +55,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2 sm:gap-3">
             {isAuthenticated ? (
               <>
+                {/* Direct link to Beta Testing Workspace */}
+                <button
+                  onClick={() => onNavigate('beta-dashboard')}
+                  className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-medium rounded-full border transition-all cursor-pointer ${
+                    currentPage === 'beta-dashboard'
+                      ? 'bg-[#141413] text-[#FAF8F5] border-[#141413]'
+                      : 'bg-white hover:bg-[#FAF8F5] text-[#141413] border-[#E3E0D8]'
+                  }`}
+                  title="Beta Testing Workspace"
+                >
+                  <ShieldCheck size={13} className="text-[#E5182B]" />
+                  <span>Workspace</span>
+                </button>
+
                 {/* Inbox Button */}
                 <button
                   onClick={onOpenInbox}

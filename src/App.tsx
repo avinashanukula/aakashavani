@@ -16,6 +16,8 @@ import { ApplicationsPage } from './pages/ApplicationsPage';
 import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
 import { AuthPage } from './pages/AuthPage';
+import { BetaDashboardPage } from './pages/BetaDashboardPage';
+import { AdminOpsDashboardPage } from './pages/AdminOpsDashboardPage';
 
 function AppContent() {
   const { currentUser, addToast, launchLiveBeta } = useAuth();
@@ -23,6 +25,18 @@ function AppContent() {
 
   const getPageFromPath = (pathname: string): Page => {
     const cleanPath = pathname.toLowerCase().replace(/\/$/, '') || '/';
+    // Decoy protection against scanners
+    if (cleanPath === '/admin' || cleanPath === '/administrator' || cleanPath === '/admin.php') {
+      return 'home';
+    }
+    // Hashed Admin Operations Gateway
+    if (cleanPath === '/veiron-ops-9x2f8b1a' || cleanPath === '/ops-ctrl' || cleanPath === '/admin-ops') {
+      return 'admin-ops';
+    }
+    // Beta Testing Workspace
+    if (cleanPath === '/beta-testing-dashboard' || cleanPath === '/beta-dashboard' || cleanPath === '/beta') {
+      return 'beta-dashboard';
+    }
     // Support both /aakashavani and /akashavani routes
     if (cleanPath === '/aakashavani' || cleanPath === '/akashavani') return 'aakashavani';
     if (cleanPath === '/live' || cleanPath === '/preview' || cleanPath === '/preview-beta') return 'aakashavani';
@@ -36,6 +50,8 @@ function AppContent() {
 
   const getPathFromPage = (page: Page): string => {
     switch (page) {
+      case 'beta-dashboard': return '/beta-testing-dashboard';
+      case 'admin-ops': return '/veiron-ops-9x2f8b1a';
       case 'aakashavani': return '/aakashavani';
       case 'approach': return '/approach';
       case 'applications': return '/applications';
@@ -48,6 +64,8 @@ function AppContent() {
 
   const getTitleFromPage = (page: Page): string => {
     switch (page) {
+      case 'beta-dashboard': return 'Beta Testing Workspace — Aakashavani | VEIRON';
+      case 'admin-ops': return 'Veiron Ops Control — Administration Terminal';
       case 'aakashavani': return 'Aakashavani — Financial World Model | VEIRON';
       case 'approach': return 'The World-Model Approach | VEIRON';
       case 'applications': return 'Institutional Applications | VEIRON';
@@ -141,6 +159,8 @@ function AppContent() {
       <main className="flex-1">
         {currentPage === 'home' && <HomePage onNavigate={handleNavigate} />}
         {currentPage === 'aakashavani' && <AakashavaniPage onNavigate={handleNavigate} />}
+        {currentPage === 'beta-dashboard' && <BetaDashboardPage onNavigate={handleNavigate} />}
+        {currentPage === 'admin-ops' && <AdminOpsDashboardPage onNavigate={handleNavigate} />}
         {currentPage === 'approach' && <ApproachPage onNavigate={handleNavigate} />}
         {currentPage === 'applications' && <ApplicationsPage onNavigate={handleNavigate} />}
         {currentPage === 'about' && <AboutPage onNavigate={handleNavigate} />}

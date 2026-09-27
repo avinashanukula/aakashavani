@@ -162,7 +162,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     try {
       await verifyTwoFactor(pendingEmail, twoFactorCode.trim());
       setTimeout(() => {
-        onNavigate('aakashavani');
+        onNavigate('beta-dashboard');
       }, 400);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Invalid or expired 2-step verification code.');
