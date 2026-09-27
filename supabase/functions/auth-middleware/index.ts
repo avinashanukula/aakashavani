@@ -1302,30 +1302,134 @@ You may now access live recursive world model simulations directly from the Beta
       const cleanReply = sanitize(replyBody, 4000);
       const cleanSubject = sanitize(subject || "Response from Institutional Committee", 120);
 
+      // Verify that user exists in beta_testers (required by inbox_messages user_email foreign key)
+      const { data: targetTester, error: testerErr } = await supabaseAdmin
+        .from("beta_testers")
+        .select("id, full_name, email, clearance_code")
+        .ilike("email", cleanEmail)
+        .maybeSingle();
+
+      if (testerErr || !targetTester) {
+        return jsonResponse({ 
+          error: `Cannot dispatch reply: No registered tester found for email '${cleanEmail}'.` 
+        }, 404);
+      }
+
+      // Validate parent_message_id UUID to prevent Postgres foreign key violations
+      let safeParentId: string | null = null;
+      if (parentMessageId && typeof parentMessageId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parentMessageId)) {
+        const { data: parentCheck } = await supabaseAdmin
+          .from("inbox_messages")
+          .select("id")
+          .eq("id", parentMessageId)
+          .maybeSingle();
+        if (parentCheck) {
+          safeParentId = parentMessageId;
+        }
+      }
+
+      // Insert message into user's mailbox (correct column: parent_message_id)
       const { data: newMsg, error: insertErr } = await supabaseAdmin
         .from("inbox_messages")
         .insert({
-          user_email: cleanEmail,
+          user_email: targetTester.email,
           sender: "Veiron Institutional Administration",
           title: "Administrative Committee Response",
           subject: cleanSubject,
           body: cleanReply,
-          category: "system",
-          parent_id: parentMessageId || null,
+          category: "reply",
+          parent_message_id: safeParentId,
           read: false
         })
         .select()
         .single();
 
       if (insertErr) {
-        return jsonResponse({ error: "Failed to dispatch reply message." }, 500);
+        console.error("Database error inserting admin reply:", insertErr);
+        return jsonResponse({ error: `Failed to dispatch reply message: ${insertErr.message}` }, 500);
       }
 
-      await logAuditEvent(cleanEmail, "ADMIN_REPLY_DISPATCHED", { parentMessageId }, clientIp);
+      // Dispatch outbound email notification via Resend
+      const resendApiKey = Deno.env.get("RESEND_API_KEY");
+      if (resendApiKey) {
+        try {
+          const emailHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #FAF8F5; color: #141413; padding: 24px; margin: 0; }
+              .card { max-width: 580px; margin: 0 auto; background: #ffffff; border: 2px solid #141413; padding: 32px; border-radius: 4px; }
+              .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 8px; background: #FAF8F5; border: 1px solid #E3E0D8; text-transform: uppercase; letter-spacing: 0.05em; color: #E5182B; }
+              .body-box { background: #FAF8F5; border: 1px solid #E3E0D8; padding: 18px; margin: 20px 0; font-size: 13px; line-height: 1.6; white-space: pre-line; color: #141413; }
+              .footer { font-size: 11px; color: #87857F; margin-top: 24px; border-top: 1px solid #E3E0D8; padding-top: 16px; text-align: center; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <span class="badge">VEIRON · ADMINISTRATIVE DISPATCH</span>
+              <h2 style="font-size: 20px; font-family: serif; margin: 16px 0 8px 0;">${cleanSubject}</h2>
+              <p style="font-size: 13px; color: #66645E;">
+                Dear ${targetTester.full_name},<br>
+                The Institutional Review Committee has dispatched an official response to your inquiry.
+              </p>
+              <div class="body-box">
+                ${cleanReply}
+              </div>
+              <p style="font-size: 12px; color: #87857F;">
+                You can also view and manage this message in your dashboard inbox under Clearance [${targetTester.clearance_code}].
+              </p>
+              <div class="footer">
+                VEIRON RECURSIVE ARCHITECTURE · SECURITY TIERS NIST/ISO 27001
+              </div>
+            </div>
+          </body>
+          </html>
+          `;
+
+          let res = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${resendApiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: "Veiron Institutional <onboarding@resend.dev>",
+              to: [targetTester.email],
+              subject: `[Administrative Response] ${cleanSubject}`,
+              html: emailHtml,
+            }),
+          });
+
+          let resData = await res.json();
+          // If Resend free tier restricts to account owner email (notpavan2022@gmail.com), forward to developer Gmail
+          if (res.status === 403 && (resData.message?.includes("testing emails to your own email address") || resData.message?.includes("resend.com/domains"))) {
+            console.warn(`Resend domain restriction: Forwarding admin reply for ${targetTester.email} to notpavan2022@gmail.com`);
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${resendApiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: "Veiron Institutional <onboarding@resend.dev>",
+                to: ["notpavan2022@gmail.com"],
+                subject: `[Admin Reply for ${targetTester.email}] ${cleanSubject}`,
+                html: emailHtml,
+              }),
+            });
+          }
+        } catch (mailErr) {
+          console.warn("Outbound admin reply email dispatch failed:", mailErr);
+        }
+      }
+
+      await logAuditEvent(cleanEmail, "ADMIN_REPLY_DISPATCHED", { parentMessageId: safeParentId }, clientIp);
 
       return jsonResponse({
         success: true,
-        message: `Reply successfully dispatched to ${cleanEmail}.`,
+        message: `Reply successfully dispatched to ${targetTester.full_name} (${cleanEmail}).`,
         messageRecord: newMsg
       });
     }
