@@ -128,6 +128,13 @@ class SupabaseService {
   }
 
   /**
+   * Request institutional clearance code retrieval (Rate limited to max 2 requests per hour).
+   */
+  async requestClearanceCode(email: string): Promise<{ success: boolean; message: string }> {
+    return await this.invokeMiddleware<{ success: boolean; message: string }>('request-clearance', { email });
+  }
+
+  /**
    * Invalidate session token on server upon sign-out.
    */
   async signOut(sessionToken: string): Promise<void> {

@@ -288,37 +288,20 @@ async function sendClearanceEmail(params: {
         },
         body: JSON.stringify({
           from: "Veiron Institutional <onboarding@resend.dev>",
-          to: [to],
+          to: [to.trim().toLowerCase()],
           subject: emailSubject,
           html: htmlContent,
         }),
       });
 
-      let data = await res.json();
-
-      // If Resend trial mode restricts to account owner email (notpavan2022@gmail.com), forward directly to developer Gmail
-      if (res.status === 403 && (data.message?.includes("testing emails to your own email address") || data.message?.includes("resend.com/domains"))) {
-        console.warn(`Resend domain restriction: Forwarding verification for ${to} to notpavan2022@gmail.com`);
-        res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: "Veiron Institutional <onboarding@resend.dev>",
-            to: ["notpavan2022@gmail.com"],
-            subject: twoFactorCode 
-              ? `[2FA for ${to}] Confirmation Code: ${twoFactorCode}`
-              : `[Clearance for ${to}] Notice [${clearanceCode}]`,
-            html: htmlContent,
-          }),
-        });
-        data = await res.json();
-      }
-
+      const data = await res.json();
       console.log(`Resend API dispatch result for ${to}:`, data);
-      return { sent: true, provider: "resend", id: data.id };
+      if (res.ok) {
+        return { sent: true, provider: "resend", id: data.id };
+      } else {
+        console.warn(`Resend API returned error (${res.status}) for ${to}:`, data);
+        return { sent: false, error: data.message };
+      }
     } catch (e) {
       console.warn("Resend API dispatch failed:", e);
     }
@@ -1403,23 +1386,7 @@ You may now access live recursive world model simulations directly from the Beta
           });
 
           let resData = await res.json();
-          // If Resend free tier restricts to account owner email (notpavan2022@gmail.com), forward to developer Gmail
-          if (res.status === 403 && (resData.message?.includes("testing emails to your own email address") || resData.message?.includes("resend.com/domains"))) {
-            console.warn(`Resend domain restriction: Forwarding admin reply for ${targetTester.email} to notpavan2022@gmail.com`);
-            await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${resendApiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                from: "Veiron Institutional <onboarding@resend.dev>",
-                to: ["notpavan2022@gmail.com"],
-                subject: `[Admin Reply for ${targetTester.email}] ${cleanSubject}`,
-                html: emailHtml,
-              }),
-            });
-          }
+          console.log(`Outbound admin reply email dispatch result for ${targetTester.email}:`, resData);
         } catch (mailErr) {
           console.warn("Outbound admin reply email dispatch failed:", mailErr);
         }
@@ -1431,6 +1398,151 @@ You may now access live recursive world model simulations directly from the Beta
         success: true,
         message: `Reply successfully dispatched to ${targetTester.full_name} (${cleanEmail}).`,
         messageRecord: newMsg
+      });
+    }
+
+    // =========================================================================
+    // ACTION: REQUEST CLEARANCE CODE (Credential Retrieval with 1-Hour Rate Limit)
+    // =========================================================================
+    if (action === "request-clearance") {
+      const { email } = body;
+      if (!email || typeof email !== "string" || !email.trim()) {
+        return jsonResponse({ error: "Institutional email address is required." }, 400);
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+
+      // Look up tester in database
+      const { data: user, error: userErr } = await supabaseAdmin
+        .from("beta_testers")
+        .select("id, full_name, email, role, clearance_code, approval_status, tester_tier, last_clearance_request_at, clearance_request_count")
+        .ilike("email", cleanEmail)
+        .maybeSingle();
+
+      if (userErr || !user) {
+        return jsonResponse({ 
+          error: "No registered institutional account was found for this email address. Please opt-in as a beta tester first." 
+        }, 404);
+      }
+
+      // Rate Limiting: Maximum 2 requests per 1 hour window
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+      const now = Date.now();
+      const lastRequestTime = user.last_clearance_request_at ? new Date(user.last_clearance_request_at).getTime() : 0;
+      const count = user.clearance_request_count || 0;
+
+      if (lastRequestTime && (now - lastRequestTime < ONE_HOUR_MS)) {
+        if (count >= 2) {
+          const remainingMinutes = Math.max(1, Math.ceil((ONE_HOUR_MS - (now - lastRequestTime)) / 60000));
+          return jsonResponse({
+            error: `Rate limit reached: Maximum 2 clearance retrieval requests per hour. Please wait ${remainingMinutes} minute(s) before requesting again.`,
+            waitMinutes: remainingMinutes,
+            rateLimited: true
+          }, 429);
+        } else {
+          // Increment count within the active 1-hour window
+          await supabaseAdmin
+            .from("beta_testers")
+            .update({
+              clearance_request_count: count + 1,
+              last_clearance_request_at: new Date().toISOString()
+            })
+            .eq("id", user.id);
+        }
+      } else {
+        // Reset count and start new 1-hour window
+        await supabaseAdmin
+          .from("beta_testers")
+          .update({
+            clearance_request_count: 1,
+            last_clearance_request_at: new Date().toISOString()
+          })
+          .eq("id", user.id);
+      }
+
+      // Build dedicated clearance recovery email
+      const clearanceHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #FAF8F5; color: #141413; padding: 24px; margin: 0; }
+          .card { max-width: 580px; margin: 0 auto; background: #ffffff; border: 2px solid #141413; padding: 32px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+          .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 8px; background: #FAF8F5; border: 1px solid #E3E0D8; text-transform: uppercase; letter-spacing: 0.05em; color: #E5182B; }
+          .code-box { background: #FAF8F5; border: 2px solid #141413; padding: 20px; margin: 24px 0; text-align: center; }
+          .code-title { font-size: 11px; color: #87857F; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; font-weight: 600; }
+          .code-val { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 26px; font-weight: 800; color: #E5182B; letter-spacing: 0.15em; }
+          .info-row { font-size: 13px; border-bottom: 1px solid #F0EEE6; padding: 10px 0; display: flex; justify-content: space-between; }
+          .status-pill { font-weight: bold; color: ${user.approval_status === 'approved' ? '#065F46' : '#92400E'}; }
+          .footer { font-size: 11px; color: #87857F; margin-top: 28px; text-align: center; border-top: 1px solid #E3E0D8; padding-top: 16px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div style="margin-bottom: 16px;">
+            <span class="badge">VEIRON · CREDENTIAL RECOVERY</span>
+          </div>
+          <h2 style="margin: 0 0 12px 0; font-size: 22px; font-family: serif;">Institutional Clearance Credentials</h2>
+          <p style="font-size: 14px; line-height: 1.5; color: #474540;">
+            Dear ${user.full_name},<br><br>
+            You requested your institutional clearance credentials for the <strong>Aakashavani (AKHVNI-0.1.2)</strong> World Model beta platform.
+          </p>
+
+          <div class="code-box">
+            <div class="code-title">YOUR OFFICIAL CLEARANCE CODE</div>
+            <div class="code-val">${user.clearance_code}</div>
+          </div>
+
+          <div style="margin: 20px 0;">
+            <div class="info-row"><span>REGISTERED EMAIL:</span> <strong>${user.email}</strong></div>
+            <div class="info-row"><span>ASSIGNED ROLE:</span> <strong>${user.role.toUpperCase()}</strong></div>
+            <div class="info-row"><span>TIER LEVEL:</span> <strong>${user.tester_tier || 'TIER-1 EARLY ACCESS'}</strong></div>
+            <div class="info-row"><span>CLEARANCE STATUS:</span> <span class="status-pill">${user.approval_status.toUpperCase()}</span></div>
+          </div>
+
+          <p style="font-size: 12px; color: #66645E; line-height: 1.5;">
+            Use this clearance code in the sign-in form to access your testing workspace.
+          </p>
+
+          <div class="footer">
+            VEIRON RECURSIVE ARCHITECTURE · SECURITY TIERS NIST/ISO 27001<br>
+            Dispatched via Supabase Edge Function to ${cleanEmail}.
+          </div>
+        </div>
+      </body>
+      </html>
+      `;
+
+      // Dispatch via Resend directly to the user who requested it
+      const resendApiKey = Deno.env.get("RESEND_API_KEY");
+      if (resendApiKey) {
+        try {
+          const res = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${resendApiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: "Veiron Institutional <onboarding@resend.dev>",
+              to: [cleanEmail],
+              subject: `Your Institutional Clearance Code: ${user.clearance_code}`,
+              html: clearanceHtml,
+            }),
+          });
+          const data = await res.json();
+          console.log(`Clearance recovery email dispatched to ${cleanEmail}:`, data);
+        } catch (e) {
+          console.warn("Failed to dispatch clearance recovery email:", e);
+        }
+      }
+
+      await logAuditEvent(cleanEmail, "CLEARANCE_RECOVERY_DISPATCHED", { clearanceCode: user.clearance_code }, clientIp);
+
+      return jsonResponse({
+        success: true,
+        message: `Clearance code successfully dispatched to ${cleanEmail}. Please check your inbox.`
       });
     }
 

@@ -19,8 +19,12 @@ import {
   Check,
   Key,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  Send,
+  X
 } from 'lucide-react';
+import { supabaseService } from '../services/supabaseService';
 
 interface AuthPageProps {
   onNavigate: (page: Page) => void;
@@ -55,6 +59,34 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   // Sign In Form Fields
   const [signInEmail, setSignInEmail] = useState('');
   const [signInPassword, setSignInPassword] = useState('');
+
+  // Request Clearance Modal State
+  const [isRequestClearanceOpen, setIsRequestClearanceOpen] = useState(false);
+  const [requestClearanceEmail, setRequestClearanceEmail] = useState('');
+  const [isRequestingClearance, setIsRequestingClearance] = useState(false);
+  const [requestClearanceSuccess, setRequestClearanceSuccess] = useState<string | null>(null);
+  const [requestClearanceError, setRequestClearanceError] = useState<string | null>(null);
+
+  const handleRequestClearanceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRequestClearanceError(null);
+    setRequestClearanceSuccess(null);
+
+    if (!requestClearanceEmail.trim()) {
+      setRequestClearanceError('Please enter your registered institutional email.');
+      return;
+    }
+
+    setIsRequestingClearance(true);
+    try {
+      const res = await supabaseService.requestClearanceCode(requestClearanceEmail.trim());
+      setRequestClearanceSuccess(res.message || 'Clearance code successfully dispatched to your email.');
+    } catch (err: any) {
+      setRequestClearanceError(err?.message || 'Failed to dispatch clearance code.');
+    } finally {
+      setIsRequestingClearance(false);
+    }
+  };
 
   const handleSignUpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -601,6 +633,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       className="w-full pl-9 pr-3 py-2.5 bg-[#FAF8F5] border border-[#E3E0D8] text-xs text-[#141413] focus:outline-none focus:border-[#141413]"
                     />
                   </div>
+
+                  {/* Request Clearance Trigger */}
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-[#66645E]">Forgot or need your clearance credential?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsRequestClearanceOpen(true);
+                        setRequestClearanceEmail(signInEmail || '');
+                        setRequestClearanceError(null);
+                        setRequestClearanceSuccess(null);
+                      }}
+                      className="text-xs font-mono font-semibold text-[#E5182B] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Key size={12} />
+                      <span>Request Clearance Code</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -654,6 +704,106 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           <div className="text-[#B5B2A8]">Instance: AKHVNI-0.1.2-BETA-SECURED</div>
         </div>
       </div>
+
+      {/* Request Clearance Code Modal */}
+      {isRequestClearanceOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="max-w-md w-full bg-white border-2 border-[#141413] shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between border-b border-[#F0EEE6] pb-3">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold text-[#E5182B] uppercase tracking-wider">
+                  <Key size={12} />
+                  <span>CREDENTIAL RETRIEVAL DISPATCH</span>
+                </div>
+                <h3 className="text-lg font-serif font-bold text-[#141413]">
+                  Request Clearance Code
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsRequestClearanceOpen(false)}
+                className="text-[#87857F] hover:text-[#141413] p-1 cursor-pointer transition-colors"
+                title="Close Modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#66645E] leading-relaxed">
+              Enter your registered institutional email address. If an account is found in the Veiron database, your official clearance code and access credentials will be immediately dispatched to your inbox.
+            </p>
+
+            {/* Rate limit badge */}
+            <div className="p-2.5 bg-[#FAF8F5] border border-[#E3E0D8] text-[11px] font-mono text-[#4F4D47] flex items-center gap-2">
+              <Clock size={13} className="text-amber-600 shrink-0" />
+              <span>Rate Limit: Max 2 clearance code requests per 1 hour window.</span>
+            </div>
+
+            {requestClearanceError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-mono flex items-start gap-2">
+                <AlertCircle size={14} className="shrink-0 mt-0.5 text-red-600" />
+                <span>{requestClearanceError}</span>
+              </div>
+            )}
+
+            {requestClearanceSuccess && (
+              <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs flex items-start gap-2.5">
+                <CheckCircle2 size={16} className="shrink-0 text-emerald-600 mt-0.5" />
+                <div>
+                  <span className="font-semibold block">Clearance Code Dispatched!</span>
+                  <span className="text-[11px] text-emerald-800 leading-relaxed block mt-0.5">
+                    {requestClearanceSuccess}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleRequestClearanceSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-[#141413]">
+                  Registered Institutional Email
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#87857F]">
+                    <Mail size={15} />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={requestClearanceEmail}
+                    onChange={(e) => setRequestClearanceEmail(e.target.value)}
+                    placeholder="e.g. analyst@institution.com"
+                    className="w-full pl-9 pr-3 py-2.5 bg-[#FAF8F5] border border-[#E3E0D8] text-xs text-[#141413] focus:outline-none focus:border-[#141413]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F0EEE6]">
+                <button
+                  type="button"
+                  onClick={() => setIsRequestClearanceOpen(false)}
+                  className="px-4 py-2 text-xs font-mono text-[#66645E] hover:text-[#141413] border border-[#E3E0D8] cursor-pointer hover:bg-[#FAF8F5] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRequestingClearance}
+                  className="px-5 py-2 bg-[#E5182B] hover:bg-[#FF2A3D] text-white text-xs font-semibold rounded-none transition-all shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isRequestingClearance ? (
+                    <span>DISPATCHING...</span>
+                  ) : (
+                    <>
+                      <Send size={13} />
+                      <span>Send Clearance Code</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
